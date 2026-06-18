@@ -165,6 +165,7 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     input_csv = tmp_path / "btc.csv"
     output_csv = tmp_path / "research" / "btc_cycle.csv"
+    manifest_path = tmp_path / "research" / "btc_cycle.manifest.json"
     _btc_frame(205).to_csv(input_csv, index=False)
 
     result = export_main(
@@ -173,6 +174,8 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
             str(input_csv),
             "--output-csv",
             str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
             "--as-of",
             "2025-07-23",
             "--pretty",
@@ -182,8 +185,17 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     assert result == 0
     summary = json.loads(capsys.readouterr().out)
     exported = pd.read_csv(output_csv)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert summary["row_count"] == 5
     assert summary["last_date"] == "2025-07-23"
+    assert summary["manifest"] == str(manifest_path)
+    assert summary["output_sha256"] == _sha256(output_csv)
+    assert manifest["schema_version"] == "research_export.v1"
+    assert manifest["artifact_type"] == "btc_cycle_research_csv"
+    assert manifest["transform"] == "crypto.btc.ahr999.v1"
+    assert manifest["input_csv"]["sha256"] == _sha256(input_csv)
+    assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert manifest["min_history"] == 200
     assert "ahr999" in summary["columns"]
     assert "mayer_multiple" in exported.columns
 

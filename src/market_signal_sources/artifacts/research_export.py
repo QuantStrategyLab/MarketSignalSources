@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+import json
+from os import PathLike
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from .signal_bundle import sha256_file
+
+
+RESEARCH_EXPORT_SCHEMA_VERSION = "research_export.v1"
+
+
+def write_research_export_manifest(
+    manifest_path: str | PathLike[str],
+    *,
+    output_csv_path: str | PathLike[str],
+    output_frame: pd.DataFrame,
+    input_csv_path: str | PathLike[str],
+    transform: str,
+    source_version: str,
+    as_of: str | None,
+    min_history: int,
+) -> dict[str, Any]:
+    """Write a non-runtime manifest for an offline research CSV export."""
+
+    output_path = Path(output_csv_path)
+    input_path = Path(input_csv_path)
+    manifest = {
+        "schema_version": RESEARCH_EXPORT_SCHEMA_VERSION,
+        "artifact_type": "btc_cycle_research_csv",
+        "transform": str(transform),
+        "source_version": str(source_version),
+        "as_of": None if as_of is None else pd.Timestamp(as_of).normalize().date().isoformat(),
+        "min_history": int(min_history),
+        "row_count": int(len(output_frame)),
+        "first_date": str(output_frame.iloc[0]["date"]) if not output_frame.empty else "",
+        "last_date": str(output_frame.iloc[-1]["date"]) if not output_frame.empty else "",
+        "columns": [str(column) for column in output_frame.columns],
+        "input_csv": {
+            "path": str(input_path),
+            "sha256": sha256_file(input_path),
+            "size_bytes": input_path.stat().st_size,
+        },
+        "output_csv": {
+            "path": str(output_path),
+            "sha256": sha256_file(output_path),
+            "size_bytes": output_path.stat().st_size,
+        },
+    }
+    target_path = Path(manifest_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return manifest

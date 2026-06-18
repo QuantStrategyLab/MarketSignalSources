@@ -9,6 +9,7 @@ from .artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     write_signal_bundle_artifacts,
 )
+from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
 from .artifacts.validation import (
     SignalBundleValidationError,
     signal_bundle_audit_summary,
@@ -29,6 +30,7 @@ __all__ = [
     "MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION",
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
+    "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SignalBundleValidationError",
     "build_btc_cycle_signal_bundle",
     "build_btc_cycle_indicator_frame",
@@ -37,5 +39,6 @@ __all__ = [
     "validate_signal_bundle",
     "validate_signal_bundle_index",
     "validate_signal_bundle_manifest",
+    "write_research_export_manifest",
     "write_signal_bundle_artifacts",
 ]

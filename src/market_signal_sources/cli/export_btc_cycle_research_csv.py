@@ -8,6 +8,7 @@ import sys
 
 import pandas as pd
 
+from market_signal_sources.artifacts.research_export import write_research_export_manifest
 from market_signal_sources.derived.crypto import build_btc_cycle_indicator_frame
 from market_signal_sources.providers import load_ohlcv_csv
 
@@ -33,6 +34,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         args.output_csv.parent.mkdir(parents=True, exist_ok=True)
         output.to_csv(args.output_csv, index=False)
+        manifest_path = args.manifest_path or args.output_csv.with_suffix(".manifest.json")
+        manifest = write_research_export_manifest(
+            manifest_path,
+            output_csv_path=args.output_csv,
+            output_frame=output,
+            input_csv_path=args.input_csv,
+            transform="crypto.btc.ahr999.v1",
+            source_version=args.source_version,
+            as_of=args.as_of,
+            min_history=args.min_history,
+        )
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -40,6 +52,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = {
         "input_csv": str(args.input_csv),
         "output_csv": str(args.output_csv),
+        "manifest": str(manifest_path),
+        "output_sha256": manifest["output_csv"]["sha256"],
         "row_count": int(len(output)),
         "first_date": str(output.iloc[0]["date"]),
         "last_date": str(output.iloc[-1]["date"]),
@@ -57,8 +71,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-csv", required=True, type=Path)
     parser.add_argument("--output-csv", required=True, type=Path)
+    parser.add_argument("--manifest-path", type=Path)
     parser.add_argument("--as-of")
     parser.add_argument("--min-history", type=int, default=200)
+    parser.add_argument("--source-version", default="0.1.0")
     parser.add_argument("--date-column", default="date")
     parser.add_argument("--close-column", default="close")
     parser.add_argument("--high-column", default="high")
