@@ -8,6 +8,7 @@ import sys
 from market_signal_sources.artifacts.consumer_contracts import (
     SignalConsumerContractError,
     consumer_contract_registry_payload,
+    write_consumer_contract_registry,
 )
 
 
@@ -16,9 +17,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        payload = consumer_contract_registry_payload(
-            consumers=args.consumer,
-        )
+        if args.output_json is not None:
+            payload = write_consumer_contract_registry(
+                args.output_json,
+                consumers=args.consumer,
+            )
+        else:
+            payload = consumer_contract_registry_payload(
+                consumers=args.consumer,
+            )
     except SignalConsumerContractError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -35,6 +42,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--consumer",
         action="append",
         help="Limit output to a known consumer. Can be provided multiple times.",
+    )
+    parser.add_argument(
+        "--output-json",
+        help="Write the registry JSON artifact and print hash metadata.",
     )
     parser.add_argument("--pretty", action="store_true")
     return parser

@@ -68,6 +68,16 @@ python -m market_signal_sources.cli.list_consumer_contracts \
 
 The registry uses `market_signal_consumer_contracts.v1` and lists each
 consumer's canonical input plus required indicator fields by symbol.
+To publish the registry as an artifact with SHA-256 metadata:
+
+```bash
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --output-json ./data/output/market_signal_consumers.json \
+  --pretty
+```
+
+The printed summary includes `sha256`, `size_bytes`, `schema_version`,
+`canonical_input`, and `consumer_count`.
 
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 

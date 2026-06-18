@@ -15,6 +15,7 @@ from market_signal_sources.artifacts.signal_bundle import (
 from market_signal_sources.artifacts.consumer_contracts import (
     consumer_contract_registry_payload,
     known_signal_consumers,
+    write_consumer_contract_registry,
 )
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
@@ -276,6 +277,41 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
             },
         }
     ]
+
+
+def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys) -> None:
+    output_json = tmp_path / "contracts" / "market_signal_consumers.json"
+
+    summary = write_consumer_contract_registry(
+        output_json,
+        consumers=("us_equity:ibit_smart_dca",),
+    )
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+
+    assert summary["path"] == str(output_json)
+    assert summary["schema_version"] == "market_signal_consumer_contracts.v1"
+    assert summary["consumer_count"] == 1
+    assert summary["sha256"] == _sha256(output_json)
+    assert summary["size_bytes"] == output_json.stat().st_size
+    assert payload["contracts"][0]["consumer"] == "us_equity:ibit_smart_dca"
+
+    result = list_contracts_main(
+        [
+            "--consumer",
+            "research:ibit_btc_ahr999_mayer_precomputed_variants",
+            "--output-json",
+            str(output_json),
+            "--pretty",
+        ]
+    )
+
+    assert result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    cli_payload = json.loads(output_json.read_text(encoding="utf-8"))
+    assert cli_summary["sha256"] == _sha256(output_json)
+    assert cli_payload["contracts"][0]["consumer"] == (
+        "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    )
 
 
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:

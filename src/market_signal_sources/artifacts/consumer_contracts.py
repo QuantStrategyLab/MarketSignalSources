@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+import hashlib
+import json
+from os import PathLike
+from pathlib import Path
 from typing import Any
 
 from .signal_bundle import CANONICAL_INPUT_DERIVED_INDICATORS
@@ -78,6 +82,30 @@ def consumer_contract_registry_payload(
     }
 
 
+def write_consumer_contract_registry(
+    path: str | PathLike[str],
+    *,
+    consumers: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Write consumer contracts as a JSON artifact and return hash metadata."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = consumer_contract_registry_payload(consumers=consumers)
+    output_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "path": str(output_path),
+        "schema_version": payload["schema_version"],
+        "canonical_input": payload["canonical_input"],
+        "consumer_count": len(payload["contracts"]),
+        "sha256": _sha256_file(output_path),
+        "size_bytes": output_path.stat().st_size,
+    }
+
+
 def _contract_record(
     consumer: str,
     required_fields_by_symbol: Mapping[str, Iterable[str]],
@@ -93,3 +121,11 @@ def _contract_record(
             for symbol, fields in sorted(required_fields_by_symbol.items())
         },
     }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
