@@ -14,12 +14,14 @@ from market_signal_sources.artifacts.signal_bundle import (
 )
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
+    validate_research_export_manifest,
     validate_signal_bundle,
     validate_signal_bundle_index,
     validate_signal_bundle_manifest,
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
+from market_signal_sources.cli.validate_research_export import main as validate_research_main
 from market_signal_sources.cli.validate_signal_bundle import main as validate_main
 from market_signal_sources.derived.crypto.btc_cycle import (
     build_btc_cycle_indicator_frame,
@@ -198,6 +200,105 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     assert manifest["min_history"] == 200
     assert "ahr999" in summary["columns"]
     assert "mayer_multiple" in exported.columns
+
+    validation_summary = validate_research_export_manifest(
+        manifest_path,
+        expected_artifact_type="btc_cycle_research_csv",
+        expected_transform="crypto.btc.ahr999.v1",
+    )
+    assert validation_summary["row_count"] == 5
+    assert validation_summary["output_csv_sha256"] == _sha256(output_csv)
+
+    validate_result = validate_research_main(
+        [
+            str(manifest_path),
+            "--expected-transform",
+            "crypto.btc.ahr999.v1",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    assert cli_summary["artifact_type"] == "btc_cycle_research_csv"
+    assert cli_summary["columns"][-1] == "cycle_indicator_source"
+
+
+def test_research_export_validator_rejects_checksum_mismatch(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    output_csv = tmp_path / "research" / "btc_cycle.csv"
+    manifest_path = tmp_path / "research" / "btc_cycle.manifest.json"
+    _btc_frame(205).to_csv(input_csv, index=False)
+    assert export_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-07-23",
+        ]
+    ) == 0
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["output_csv"]["sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="output_csv.sha256 mismatch"):
+        validate_research_export_manifest(manifest_path)
+
+
+def test_research_export_validator_rejects_sensitive_fields(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    output_csv = tmp_path / "research" / "btc_cycle.csv"
+    manifest_path = tmp_path / "research" / "btc_cycle.manifest.json"
+    _btc_frame(205).to_csv(input_csv, index=False)
+    assert export_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-07-23",
+        ]
+    ) == 0
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["provenance"] = {"signed_url": "https://example.invalid/private.csv"}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="sensitive field"):
+        validate_research_export_manifest(manifest_path)
+
+
+def test_research_export_validator_resolves_cwd_relative_paths(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    input_csv = Path("btc.csv")
+    output_csv = Path("research") / "btc_cycle.csv"
+    manifest_path = Path("research") / "btc_cycle.manifest.json"
+    _btc_frame(205).to_csv(input_csv, index=False)
+    assert export_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-07-23",
+        ]
+    ) == 0
+
+    validation_summary = validate_research_export_manifest(manifest_path)
+
+    assert validation_summary["input_csv_path"] == str(input_csv.resolve())
+    assert validation_summary["output_csv_path"] == str(output_csv.resolve())
 
 
 def test_validator_rejects_sensitive_fields() -> None:

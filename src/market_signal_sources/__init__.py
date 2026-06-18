@@ -13,6 +13,7 @@ from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_res
 from .artifacts.validation import (
     SignalBundleValidationError,
     signal_bundle_audit_summary,
+    validate_research_export_manifest,
     validate_signal_bundle,
     validate_signal_bundle_index,
     validate_signal_bundle_manifest,
@@ -36,6 +37,7 @@ __all__ = [
     "build_btc_cycle_indicator_frame",
     "compute_btc_cycle_indicators",
     "signal_bundle_audit_summary",
+    "validate_research_export_manifest",
     "validate_signal_bundle",
     "validate_signal_bundle_index",
     "validate_signal_bundle_manifest",

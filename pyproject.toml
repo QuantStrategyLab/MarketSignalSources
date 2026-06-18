@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 build-btc-cycle-bundle = "market_signal_sources.cli.build_btc_cycle_bundle:main"
 export-btc-cycle-research-csv = "market_signal_sources.cli.export_btc_cycle_research_csv:main"
+validate-research-export = "market_signal_sources.cli.validate_research_export:main"
 validate-signal-bundle = "market_signal_sources.cli.validate_signal_bundle:main"
 
 [tool.setuptools]

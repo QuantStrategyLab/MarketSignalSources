@@ -14,6 +14,7 @@ from .signal_bundle import (
     MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
     sha256_file,
 )
+from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION
 
 
 _REQUIRED_PROVENANCE_FIELDS = frozenset(
@@ -156,6 +157,51 @@ def validate_signal_bundle_index(
     return summary
 
 
+def validate_research_export_manifest(
+    path: str | PathLike[str],
+    *,
+    expected_artifact_type: str | None = None,
+    expected_transform: str | None = None,
+) -> dict[str, Any]:
+    """Validate a research_export.v1 CSV manifest and return audit summary."""
+
+    manifest_path = Path(path)
+    manifest = _load_json_mapping(manifest_path, label="research export manifest")
+    _validate_research_export_manifest_shape(
+        manifest,
+        expected_artifact_type=expected_artifact_type,
+        expected_transform=expected_transform,
+    )
+    input_record = dict(manifest["input_csv"])
+    output_record = dict(manifest["output_csv"])
+    input_path = _resolve_manifest_file_path(manifest_path, input_record["path"], field="input_csv.path")
+    output_path = _resolve_manifest_file_path(
+        manifest_path,
+        output_record["path"],
+        field="output_csv.path",
+    )
+    _validate_manifest_file_record(input_record, input_path, field="input_csv")
+    _validate_manifest_file_record(output_record, output_path, field="output_csv")
+
+    return {
+        "manifest_path": str(manifest_path.resolve()),
+        "schema_version": str(manifest.get("schema_version", "")),
+        "artifact_type": str(manifest.get("artifact_type", "")),
+        "transform": str(manifest.get("transform", "")),
+        "source_version": str(manifest.get("source_version", "")),
+        "as_of": manifest.get("as_of"),
+        "min_history": int(manifest.get("min_history", 0)),
+        "row_count": int(manifest.get("row_count", 0)),
+        "first_date": str(manifest.get("first_date", "")),
+        "last_date": str(manifest.get("last_date", "")),
+        "columns": tuple(str(column) for column in manifest["columns"]),
+        "input_csv_path": str(input_path),
+        "input_csv_sha256": str(input_record["sha256"]).strip().lower(),
+        "output_csv_path": str(output_path),
+        "output_csv_sha256": str(output_record["sha256"]).strip().lower(),
+    }
+
+
 def signal_bundle_audit_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
     """Return non-sensitive audit fields and indicator field coverage."""
 
@@ -282,7 +328,121 @@ def _validate_index(index: Mapping[str, Any]) -> None:
             "freshness_status",
         ):
             if not _has_non_empty_value(entry, field):
-                raise SignalBundleValidationError(f"signal bundle index entry missing field: {field}")
+                raise SignalBundleValidationError(
+                    f"signal bundle index entry missing field: {field}"
+                )
+
+
+def _validate_research_export_manifest_shape(
+    manifest: Mapping[str, Any],
+    *,
+    expected_artifact_type: str | None,
+    expected_transform: str | None,
+) -> None:
+    _validate_no_sensitive_fields(
+        manifest,
+        owner="research export manifest",
+        path="manifest",
+    )
+    if manifest.get("schema_version") != RESEARCH_EXPORT_SCHEMA_VERSION:
+        raise SignalBundleValidationError(
+            "unsupported research export schema_version: "
+            f"{manifest.get('schema_version')!r}"
+        )
+    for field in (
+        "artifact_type",
+        "transform",
+        "source_version",
+        "min_history",
+        "row_count",
+        "first_date",
+        "last_date",
+        "columns",
+        "input_csv",
+        "output_csv",
+    ):
+        if not _has_non_empty_value(manifest, field):
+            raise SignalBundleValidationError(f"research export manifest missing field: {field}")
+    if (
+        expected_artifact_type is not None
+        and str(manifest["artifact_type"]).strip() != str(expected_artifact_type).strip()
+    ):
+        raise SignalBundleValidationError(
+            "research export artifact_type mismatch: "
+            f"{manifest['artifact_type']!r} != {expected_artifact_type!r}"
+        )
+    if (
+        expected_transform is not None
+        and str(manifest["transform"]).strip() != str(expected_transform).strip()
+    ):
+        raise SignalBundleValidationError(
+            "research export transform mismatch: "
+            f"{manifest['transform']!r} != {expected_transform!r}"
+        )
+    if not _is_string_sequence(manifest.get("columns")):
+        raise SignalBundleValidationError("research export columns must be a sequence of strings")
+    for field in ("min_history", "row_count"):
+        value = manifest.get(field)
+        if not isinstance(value, int) or value < 0:
+            raise SignalBundleValidationError(
+                f"research export {field} must be a non-negative integer"
+            )
+    for field in ("input_csv", "output_csv"):
+        record = manifest.get(field)
+        if not isinstance(record, Mapping):
+            raise SignalBundleValidationError(f"research export {field} must be a mapping")
+        for record_field in ("path", "sha256", "size_bytes"):
+            if not _has_non_empty_value(record, record_field):
+                raise SignalBundleValidationError(
+                    f"research export {field} missing field: {record_field}"
+                )
+        size_bytes = record.get("size_bytes")
+        if not isinstance(size_bytes, int) or size_bytes < 0:
+            raise SignalBundleValidationError(
+                f"research export {field}.size_bytes must be a non-negative integer"
+            )
+
+
+def _resolve_manifest_file_path(
+    manifest_path: Path,
+    value: object,
+    *,
+    field: str,
+) -> Path:
+    raw_path = Path(str(value))
+    if raw_path.is_absolute():
+        return raw_path
+    manifest_relative = (manifest_path.parent / raw_path).resolve()
+    if manifest_relative.exists():
+        return manifest_relative
+    cwd_relative = raw_path.resolve()
+    if cwd_relative.exists():
+        return cwd_relative
+    raise SignalBundleValidationError(
+        f"research export {field} does not exist relative to manifest or cwd: {value}"
+    )
+
+
+def _validate_manifest_file_record(
+    record: Mapping[str, Any],
+    path: Path,
+    *,
+    field: str,
+) -> None:
+    expected_sha256 = str(record["sha256"]).strip().lower()
+    actual_sha256 = sha256_file(path)
+    if actual_sha256 != expected_sha256:
+        raise SignalBundleValidationError(
+            f"research export {field}.sha256 mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}"
+        )
+    expected_size_bytes = int(record["size_bytes"])
+    actual_size_bytes = path.stat().st_size
+    if actual_size_bytes != expected_size_bytes:
+        raise SignalBundleValidationError(
+            f"research export {field}.size_bytes mismatch: "
+            f"expected {expected_size_bytes}, got {actual_size_bytes}"
+        )
 
 
 def _resolve_relative_artifact_path(
@@ -447,18 +607,23 @@ def _indicator_fields_by_symbol(bundle: Mapping[str, Any]) -> dict[str, tuple[st
     return fields_by_symbol
 
 
-def _validate_no_sensitive_fields(value: Any, *, path: str = "bundle") -> None:
+def _validate_no_sensitive_fields(
+    value: Any,
+    *,
+    owner: str = "signal bundle",
+    path: str = "bundle",
+) -> None:
     if isinstance(value, Mapping):
         for raw_key, item in value.items():
             key = str(raw_key).strip().lower()
             if any(fragment in key for fragment in _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS):
                 raise SignalBundleValidationError(
-                    f"sensitive field is not allowed in signal bundle: {path}.{raw_key}"
+                    f"sensitive field is not allowed in {owner}: {path}.{raw_key}"
                 )
-            _validate_no_sensitive_fields(item, path=f"{path}.{raw_key}")
+            _validate_no_sensitive_fields(item, owner=owner, path=f"{path}.{raw_key}")
     elif _is_non_string_sequence(value):
         for index, item in enumerate(value):
-            _validate_no_sensitive_fields(item, path=f"{path}[{index}]")
+            _validate_no_sensitive_fields(item, owner=owner, path=f"{path}[{index}]")
 
 
 def _has_non_empty_value(mapping: Mapping[str, Any], field: str) -> bool:

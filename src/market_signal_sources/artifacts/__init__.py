@@ -13,6 +13,7 @@ from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_expo
 from .validation import (
     SignalBundleValidationError,
     signal_bundle_audit_summary,
+    validate_research_export_manifest,
     validate_signal_bundle,
     validate_signal_bundle_index,
     validate_signal_bundle_manifest,
@@ -28,6 +29,7 @@ __all__ = [
     "SignalBundleValidationError",
     "build_btc_cycle_signal_bundle",
     "signal_bundle_audit_summary",
+    "validate_research_export_manifest",
     "validate_signal_bundle",
     "validate_signal_bundle_index",
     "validate_signal_bundle_manifest",

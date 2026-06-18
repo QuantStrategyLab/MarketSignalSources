@@ -68,6 +68,16 @@ is intended for offline research tooling, not direct platform injection. The
 research manifest records input/output SHA-256 hashes, row count, columns,
 date range, transform, source version, and `min_history`.
 
+Validate the research CSV manifest before handing it to strategy research tooling:
+
+```bash
+python -m market_signal_sources.cli.validate_research_export \
+  ./data/output/research/btc_cycle_indicators.manifest.json \
+  --expected-artifact-type btc_cycle_research_csv \
+  --expected-transform crypto.btc.ahr999.v1 \
+  --pretty
+```
+
 Downstream platforms should validate the manifest and bundle hashes, freshness, provenance, and canonical input before injecting:
 
 ```python
