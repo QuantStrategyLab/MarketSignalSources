@@ -11,6 +11,22 @@ from .signal_bundle import sha256_file
 
 
 QUALITY_REPORT_SCHEMA_VERSION = "market_signal_quality_report.v1"
+_FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "cookie",
+        "credential",
+        "password",
+        "secret",
+        "signed_url",
+        "token",
+    }
+)
+
+
+class QualityReportValidationError(ValueError):
+    """Raised when a quality report cannot be safely published or consumed."""
 
 
 def build_ohlcv_quality_report(
@@ -153,6 +169,139 @@ def write_ohlcv_quality_report(
     return report
 
 
+def validate_ohlcv_quality_report(
+    report: dict[str, Any],
+    *,
+    reject_fail_status: bool = True,
+) -> None:
+    """Validate a JSON-safe local OHLCV quality report payload."""
+
+    if not isinstance(report, dict):
+        raise QualityReportValidationError("quality report must be a mapping")
+    _validate_no_sensitive_fields(report)
+    if report.get("schema_version") != QUALITY_REPORT_SCHEMA_VERSION:
+        raise QualityReportValidationError(
+            "unsupported quality report schema_version: "
+            f"{report.get('schema_version')!r}"
+        )
+    if report.get("artifact_type") != "local_ohlcv_quality_report":
+        raise QualityReportValidationError(
+            "quality report artifact_type mismatch: "
+            f"{report.get('artifact_type')!r}"
+        )
+    for field in (
+        "quality_status",
+        "failure_reasons",
+        "warning_reasons",
+        "input_csv",
+        "selected_columns",
+        "source_columns",
+        "min_history_rows",
+        "max_allowed_gap_days",
+        "raw_row_count",
+        "normalized_row_count",
+        "dropped_row_count",
+        "invalid_date_count",
+        "null_close_count",
+        "non_positive_close_count",
+        "duplicate_date_count",
+        "first_date",
+        "last_date",
+        "max_gap_days",
+        "gap_count_above_threshold",
+    ):
+        if field not in report:
+            raise QualityReportValidationError(f"quality report missing field: {field}")
+    if not _is_string_sequence(report["failure_reasons"]):
+        raise QualityReportValidationError("quality report failure_reasons must be strings")
+    if not _is_string_sequence(report["warning_reasons"]):
+        raise QualityReportValidationError("quality report warning_reasons must be strings")
+    if not _is_string_sequence(report["source_columns"]):
+        raise QualityReportValidationError("quality report source_columns must be strings")
+    if report["quality_status"] not in {"pass", "warn", "fail"}:
+        raise QualityReportValidationError(
+            f"unsupported quality_status: {report['quality_status']!r}"
+        )
+    if reject_fail_status and report["quality_status"] == "fail":
+        raise QualityReportValidationError(
+            "quality report status is fail: "
+            + ",".join(str(reason) for reason in report["failure_reasons"])
+        )
+    for field in (
+        "min_history_rows",
+        "max_allowed_gap_days",
+        "raw_row_count",
+        "normalized_row_count",
+        "dropped_row_count",
+        "invalid_date_count",
+        "null_close_count",
+        "non_positive_close_count",
+        "duplicate_date_count",
+        "max_gap_days",
+        "gap_count_above_threshold",
+    ):
+        value = report[field]
+        if not isinstance(value, int) or value < 0:
+            raise QualityReportValidationError(
+                f"quality report {field} must be a non-negative integer"
+            )
+    if not isinstance(report["input_csv"], dict):
+        raise QualityReportValidationError("quality report input_csv must be a mapping")
+    for field in ("path", "sha256", "size_bytes"):
+        if field not in report["input_csv"]:
+            raise QualityReportValidationError(
+                f"quality report input_csv missing field: {field}"
+            )
+    if (
+        not isinstance(report["input_csv"]["size_bytes"], int)
+        or report["input_csv"]["size_bytes"] < 0
+    ):
+        raise QualityReportValidationError(
+            "quality report input_csv.size_bytes must be a non-negative integer"
+        )
+    if not isinstance(report["selected_columns"], dict):
+        raise QualityReportValidationError(
+            "quality report selected_columns must be a mapping"
+        )
+
+
+def validate_ohlcv_quality_report_file(
+    path: str | PathLike[str],
+    *,
+    reject_fail_status: bool = True,
+) -> dict[str, Any]:
+    """Validate a quality report artifact and return non-sensitive summary fields."""
+
+    report_path = Path(path)
+    with report_path.open(encoding="utf-8") as file_obj:
+        report = json.load(file_obj)
+    if not isinstance(report, dict):
+        raise QualityReportValidationError("quality report JSON root must be a mapping")
+    validate_ohlcv_quality_report(
+        report,
+        reject_fail_status=reject_fail_status,
+    )
+    return {
+        "path": str(report_path),
+        "sha256": sha256_file(report_path),
+        "size_bytes": report_path.stat().st_size,
+        "schema_version": report["schema_version"],
+        "artifact_type": report["artifact_type"],
+        "quality_status": report["quality_status"],
+        "failure_reasons": tuple(report["failure_reasons"]),
+        "warning_reasons": tuple(report["warning_reasons"]),
+        "input_csv_sha256": report["input_csv"]["sha256"],
+        "input_csv_size_bytes": report["input_csv"]["size_bytes"],
+        "raw_row_count": report["raw_row_count"],
+        "normalized_row_count": report["normalized_row_count"],
+        "dropped_row_count": report["dropped_row_count"],
+        "first_date": report["first_date"],
+        "last_date": report["last_date"],
+        "max_gap_days": report["max_gap_days"],
+        "gap_count_above_threshold": report["gap_count_above_threshold"],
+    }
+
+
 def _quality_report_payload(
     *,
     input_record: dict[str, Any],
@@ -255,3 +404,26 @@ def _max_gap_days(dates: pd.Series) -> int:
 def _gap_count_above_threshold(dates: pd.Series, threshold: int) -> int:
     gaps = dates.sort_values().diff().dropna().dt.days
     return int((gaps > threshold).sum()) if not gaps.empty else 0
+
+
+def _validate_no_sensitive_fields(value: object, *, path: str = "quality_report") -> None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            key_text = str(key).lower()
+            if any(
+                fragment in key_text
+                for fragment in _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS
+            ):
+                raise QualityReportValidationError(
+                    f"quality report contains forbidden sensitive key at {path}.{key}"
+                )
+            _validate_no_sensitive_fields(nested, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            _validate_no_sensitive_fields(nested, path=f"{path}[{index}]")
+
+
+def _is_string_sequence(value: object) -> bool:
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple)):
+        return False
+    return all(isinstance(item, str) and item.strip() for item in value)

@@ -25,7 +25,10 @@ from .consumer_contracts import (
 )
 from .quality_report import (
     QUALITY_REPORT_SCHEMA_VERSION,
+    QualityReportValidationError,
     build_ohlcv_quality_report,
+    validate_ohlcv_quality_report,
+    validate_ohlcv_quality_report_file,
     write_ohlcv_quality_report,
 )
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
@@ -59,6 +62,7 @@ __all__ = [
     "REQUIRED_INDICATOR_FIELDS_BY_CONSUMER",
     "SignalConsumerContractError",
     "SignalBundleValidationError",
+    "QualityReportValidationError",
     "build_btc_cycle_signal_bundle",
     "build_ohlcv_quality_report",
     "consumer_contract_for",
@@ -78,6 +82,8 @@ __all__ = [
     "validate_signal_bundle_index_for_consumer",
     "validate_signal_bundle_manifest",
     "validate_signal_bundle_manifest_for_consumer",
+    "validate_ohlcv_quality_report",
+    "validate_ohlcv_quality_report_file",
     "write_research_export_manifest",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",

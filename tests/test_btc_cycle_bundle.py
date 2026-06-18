@@ -13,7 +13,9 @@ from market_signal_sources.artifacts.signal_bundle import (
     write_signal_bundle_artifacts,
 )
 from market_signal_sources.artifacts.quality_report import (
+    QualityReportValidationError,
     build_ohlcv_quality_report,
+    validate_ohlcv_quality_report_file,
     write_ohlcv_quality_report,
 )
 from market_signal_sources.artifacts.consumer_contracts import (
@@ -40,6 +42,7 @@ from market_signal_sources.artifacts.validation import (
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
+from market_signal_sources.cli.validate_quality_report import main as validate_quality_main
 from market_signal_sources.cli.validate_research_export import main as validate_research_main
 from market_signal_sources.cli.validate_signal_bundle import main as validate_main
 from market_signal_sources.derived.crypto.btc_cycle import (
@@ -103,6 +106,81 @@ def test_ohlcv_quality_report_flags_local_csv_issues(tmp_path) -> None:
     assert "insufficient_history_rows" in report["failure_reasons"]
     assert "duplicate_dates_collapsed" in report["warning_reasons"]
     assert "date_gaps_above_threshold" in report["warning_reasons"]
+
+
+def test_quality_report_validator_accepts_publishable_artifact(tmp_path, capsys) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+
+    summary = validate_ohlcv_quality_report_file(quality_report_path)
+
+    assert summary["schema_version"] == "market_signal_quality_report.v1"
+    assert summary["artifact_type"] == "local_ohlcv_quality_report"
+    assert summary["quality_status"] == "pass"
+    assert summary["sha256"] == _sha256(quality_report_path)
+    assert summary["normalized_row_count"] == 260
+    assert summary["first_date"] == "2025-01-01"
+    assert summary["last_date"] == "2025-09-17"
+
+    result = validate_quality_main([str(quality_report_path), "--pretty"])
+
+    assert result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    assert cli_summary["sha256"] == _sha256(quality_report_path)
+    assert cli_summary["quality_status"] == "pass"
+
+
+def test_quality_report_validator_gates_failed_artifact(tmp_path, capsys) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "quality_report.json"
+    pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-05"],
+            "close": [100.0, 102.0],
+        }
+    ).to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        min_history_rows=4,
+        max_allowed_gap_days=1,
+    )
+
+    with pytest.raises(QualityReportValidationError, match="status is fail"):
+        validate_ohlcv_quality_report_file(quality_report_path)
+
+    result = validate_quality_main([str(quality_report_path)])
+
+    assert result == 2
+    assert "quality report status is fail" in capsys.readouterr().err
+
+    allow_result = validate_quality_main(
+        [str(quality_report_path), "--allow-fail-status", "--pretty"]
+    )
+
+    assert allow_result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    assert cli_summary["quality_status"] == "fail"
+    assert cli_summary["failure_reasons"] == ["insufficient_history_rows"]
+
+
+def test_quality_report_validator_rejects_sensitive_fields(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(quality_report_path, input_csv)
+    report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    report["provenance"] = {"signed_url": "https://example.invalid/private.csv"}
+    quality_report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(QualityReportValidationError, match="sensitive key"):
+        validate_ohlcv_quality_report_file(quality_report_path)
 
 
 def test_compute_btc_cycle_indicators_from_local_prices() -> None:

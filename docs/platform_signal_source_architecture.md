@@ -71,12 +71,13 @@ credential paths, or service lifecycle ownership.
 1. Build a source bundle from local or upstream-approved input data.
 2. Write `quality_report.json`, `signal_bundle.json`, `manifest.json`, and
    `index.json`.
-3. Validate the quality report hash through `manifest.json`, then validate the
-   manifest or index with the target consumer identifier.
-4. Publish the consumer contract registry with its manifest.
-5. Strategy CI validates both the signal manifest and the consumer contract
+3. Validate `quality_report.json` directly, then validate its hash through
+   `manifest.json`.
+4. Validate the manifest or index with the target consumer identifier.
+5. Publish the consumer contract registry with its manifest.
+6. Strategy CI validates both the signal manifest and the consumer contract
    registry before allowing a strategy config to reference the artifact.
-6. Runtime loads the validated bundle and injects only `derived_indicators`.
+7. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime
