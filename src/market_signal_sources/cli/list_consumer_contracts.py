@@ -23,7 +23,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise SignalConsumerContractError(
                     "provide --validate-json without --consumer or --output-json"
                 )
-            payload = validate_consumer_contract_registry_file(args.validate_json)
+            payload = validate_consumer_contract_registry_file(
+                args.validate_json,
+                require_all_known_consumers=args.require_all_known_consumers,
+            )
+        elif args.require_all_known_consumers:
+            raise SignalConsumerContractError(
+                "--require-all-known-consumers is only valid with --validate-json"
+            )
         elif args.output_json is not None:
             payload = write_consumer_contract_registry(
                 args.output_json,
@@ -57,6 +64,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-json",
         help="Validate a registry JSON artifact and print hash metadata.",
+    )
+    parser.add_argument(
+        "--require-all-known-consumers",
+        action="store_true",
+        help="Require a validated registry to cover every known consumer.",
     )
     parser.add_argument("--pretty", action="store_true")
     return parser

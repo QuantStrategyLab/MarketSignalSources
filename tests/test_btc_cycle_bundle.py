@@ -293,6 +293,10 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     assert summary["path"] == str(output_json)
     assert summary["schema_version"] == "market_signal_consumer_contracts.v1"
     assert summary["consumer_count"] == 1
+    assert summary["all_known_consumers_present"] is False
+    assert "research:ibit_btc_ahr999_mayer_precomputed" in summary[
+        "missing_known_consumers"
+    ]
     assert summary["sha256"] == _sha256(output_json)
     assert summary["size_bytes"] == output_json.stat().st_size
     assert payload["contracts"][0]["consumer"] == "us_equity:ibit_smart_dca"
@@ -320,6 +324,7 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     assert validate_summary["consumers"] == [
         "research:ibit_btc_ahr999_mayer_precomputed_variants"
     ]
+    assert validate_summary["all_known_consumers_present"] is False
 
     validate_result = list_contracts_main(
         [
@@ -332,6 +337,30 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["sha256"] == _sha256(output_json)
     assert cli_validate_summary["consumer_count"] == 1
+
+    require_all_result = list_contracts_main(
+        [
+            "--validate-json",
+            str(output_json),
+            "--require-all-known-consumers",
+        ]
+    )
+    assert require_all_result == 2
+    assert "missing known consumers" in capsys.readouterr().err
+
+
+def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_path) -> None:
+    output_json = tmp_path / "contracts.json"
+    write_consumer_contract_registry(output_json)
+
+    summary = validate_consumer_contract_registry_file(
+        output_json,
+        require_all_known_consumers=True,
+    )
+
+    assert summary["all_known_consumers_present"] is True
+    assert summary["missing_known_consumers"] == []
+    assert summary["consumer_count"] == 3
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:

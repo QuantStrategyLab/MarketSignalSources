@@ -108,39 +108,65 @@ def write_consumer_contract_registry(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    contracts = payload["contracts"]
+    contract_consumers = [str(contract["consumer"]) for contract in contracts]
+    missing_known_consumers = sorted(
+        set(CONSUMER_REQUIRED_INDICATOR_FIELDS) - set(contract_consumers)
+    )
     return {
         "path": str(output_path),
         "schema_version": payload["schema_version"],
         "canonical_input": payload["canonical_input"],
-        "consumer_count": len(payload["contracts"]),
+        "consumer_count": len(contracts),
+        "known_consumer_count": len(CONSUMER_REQUIRED_INDICATOR_FIELDS),
+        "missing_known_consumers": missing_known_consumers,
+        "all_known_consumers_present": not missing_known_consumers,
         "sha256": _sha256_file(output_path),
         "size_bytes": output_path.stat().st_size,
     }
 
 
-def validate_consumer_contract_registry_file(path: str | PathLike[str]) -> dict[str, Any]:
+def validate_consumer_contract_registry_file(
+    path: str | PathLike[str],
+    *,
+    require_all_known_consumers: bool = False,
+) -> dict[str, Any]:
     """Validate a consumer contract registry artifact and return audit metadata."""
 
     registry_path = Path(path)
     with registry_path.open(encoding="utf-8") as file_obj:
         payload = json.load(file_obj)
-    validate_consumer_contract_registry(payload)
+    validate_consumer_contract_registry(
+        payload,
+        require_all_known_consumers=require_all_known_consumers,
+    )
     contracts = payload["contracts"]
+    consumers = [
+        str(contract["consumer"])
+        for contract in contracts
+    ]
+    missing_known_consumers = sorted(
+        set(CONSUMER_REQUIRED_INDICATOR_FIELDS) - set(consumers)
+    )
     return {
         "path": str(registry_path),
         "schema_version": payload["schema_version"],
         "canonical_input": payload["canonical_input"],
         "consumer_count": len(contracts),
-        "consumers": [
-            str(contract["consumer"])
-            for contract in contracts
-        ],
+        "consumers": consumers,
+        "known_consumer_count": len(CONSUMER_REQUIRED_INDICATOR_FIELDS),
+        "missing_known_consumers": missing_known_consumers,
+        "all_known_consumers_present": not missing_known_consumers,
         "sha256": _sha256_file(registry_path),
         "size_bytes": registry_path.stat().st_size,
     }
 
 
-def validate_consumer_contract_registry(payload: Mapping[str, Any]) -> None:
+def validate_consumer_contract_registry(
+    payload: Mapping[str, Any],
+    *,
+    require_all_known_consumers: bool = False,
+) -> None:
     """Validate a JSON-safe consumer contract registry payload."""
 
     if not isinstance(payload, Mapping):
@@ -164,6 +190,13 @@ def validate_consumer_contract_registry(payload: Mapping[str, Any]) -> None:
     seen_consumers: set[str] = set()
     for contract in contracts:
         _validate_consumer_contract_record(contract, seen_consumers=seen_consumers)
+    if require_all_known_consumers:
+        missing = sorted(set(CONSUMER_REQUIRED_INDICATOR_FIELDS) - seen_consumers)
+        if missing:
+            raise SignalConsumerContractError(
+                "consumer contract registry missing known consumers: "
+                + ", ".join(missing)
+            )
 
 
 def _contract_record(
