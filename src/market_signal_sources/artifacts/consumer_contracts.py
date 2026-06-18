@@ -11,6 +11,9 @@ from .signal_bundle import CANONICAL_INPUT_DERIVED_INDICATORS
 
 
 MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION = "market_signal_consumer_contracts.v1"
+MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION = (
+    "market_signal_consumer_contract_manifest.v1"
+)
 
 CONSUMER_REQUIRED_INDICATOR_FIELDS: dict[str, dict[str, tuple[str, ...]]] = {
     "us_equity:ibit_smart_dca": {
@@ -126,6 +129,49 @@ def write_consumer_contract_registry(
     }
 
 
+def write_consumer_contract_registry_artifacts(
+    output_dir: str | PathLike[str],
+    *,
+    consumers: Iterable[str] | None = None,
+    registry_filename: str = "market_signal_consumers.json",
+    manifest_filename: str = "market_signal_consumers.manifest.json",
+) -> dict[str, Any]:
+    """Write a registry JSON artifact plus a manifest with registry hash metadata."""
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    registry_path = _artifact_child_path(
+        output_path,
+        registry_filename,
+        field="registry_filename",
+    )
+    manifest_path = _artifact_child_path(
+        output_path,
+        manifest_filename,
+        field="manifest_filename",
+    )
+    registry_summary = write_consumer_contract_registry(
+        registry_path,
+        consumers=consumers,
+    )
+    manifest = _consumer_contract_registry_manifest(
+        registry_summary,
+        registry_path=registry_path,
+        root=output_path,
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return _consumer_contract_manifest_summary(
+        manifest_path=manifest_path,
+        registry_path=registry_path,
+        registry_summary=registry_summary,
+        manifest=manifest,
+    )
+
+
 def validate_consumer_contract_registry_file(
     path: str | PathLike[str],
     *,
@@ -160,6 +206,37 @@ def validate_consumer_contract_registry_file(
         "sha256": _sha256_file(registry_path),
         "size_bytes": registry_path.stat().st_size,
     }
+
+
+def validate_consumer_contract_registry_manifest(
+    path: str | PathLike[str],
+    *,
+    require_all_known_consumers: bool = False,
+) -> dict[str, Any]:
+    """Validate a consumer contract registry manifest and its linked registry."""
+
+    manifest_path = Path(path)
+    with manifest_path.open(encoding="utf-8") as file_obj:
+        manifest = json.load(file_obj)
+    _validate_consumer_contract_registry_manifest_shape(manifest)
+    registry_path = _resolve_manifest_registry_path(
+        manifest_path,
+        str(manifest["registry_path"]),
+    )
+    registry_summary = validate_consumer_contract_registry_file(
+        registry_path,
+        require_all_known_consumers=require_all_known_consumers,
+    )
+    _validate_consumer_contract_registry_manifest_consistency(
+        manifest,
+        registry_summary=registry_summary,
+    )
+    return _consumer_contract_manifest_summary(
+        manifest_path=manifest_path,
+        registry_path=registry_path,
+        registry_summary=registry_summary,
+        manifest=manifest,
+    )
 
 
 def validate_consumer_contract_registry(
@@ -214,6 +291,147 @@ def _contract_record(
             for symbol, fields in sorted(required_fields_by_symbol.items())
         },
     }
+
+
+def _consumer_contract_registry_manifest(
+    registry_summary: Mapping[str, Any],
+    *,
+    registry_path: Path,
+    root: Path,
+) -> dict[str, Any]:
+    return {
+        "schema_version": MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION,
+        "artifact_type": "market_signal_consumer_contract_registry",
+        "registry_path": registry_path.relative_to(root).as_posix(),
+        "registry_sha256": registry_summary["sha256"],
+        "registry_size_bytes": registry_summary["size_bytes"],
+        "registry_schema_version": registry_summary["schema_version"],
+        "canonical_input": registry_summary["canonical_input"],
+        "consumer_count": registry_summary["consumer_count"],
+        "known_consumer_count": registry_summary["known_consumer_count"],
+        "missing_known_consumers": registry_summary["missing_known_consumers"],
+        "all_known_consumers_present": registry_summary["all_known_consumers_present"],
+    }
+
+
+def _consumer_contract_manifest_summary(
+    *,
+    manifest_path: Path,
+    registry_path: Path,
+    registry_summary: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "manifest_path": str(manifest_path),
+        "manifest_schema_version": manifest["schema_version"],
+        "manifest_sha256": _sha256_file(manifest_path),
+        "manifest_size_bytes": manifest_path.stat().st_size,
+        "artifact_type": manifest["artifact_type"],
+        "registry_path": str(registry_path),
+        "registry_sha256": registry_summary["sha256"],
+        "registry_size_bytes": registry_summary["size_bytes"],
+        "registry_schema_version": registry_summary["schema_version"],
+        "canonical_input": registry_summary["canonical_input"],
+        "consumer_count": registry_summary["consumer_count"],
+        "known_consumer_count": registry_summary["known_consumer_count"],
+        "missing_known_consumers": registry_summary["missing_known_consumers"],
+        "all_known_consumers_present": registry_summary["all_known_consumers_present"],
+    }
+
+
+def _artifact_child_path(root: Path, value: str, *, field: str) -> Path:
+    raw_path = Path(str(value).strip())
+    if not str(value).strip():
+        raise SignalConsumerContractError(f"{field} must not be empty")
+    if raw_path.is_absolute() or ".." in raw_path.parts:
+        raise SignalConsumerContractError(f"{field} must stay inside output_dir")
+    return root / raw_path
+
+
+def _validate_consumer_contract_registry_manifest_shape(
+    manifest: object,
+) -> None:
+    if not isinstance(manifest, Mapping):
+        raise SignalConsumerContractError("consumer contract manifest must be a mapping")
+    _validate_no_sensitive_fields(manifest, path="manifest")
+    if (
+        manifest.get("schema_version")
+        != MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION
+    ):
+        raise SignalConsumerContractError(
+            "unsupported consumer contract manifest schema_version: "
+            f"{manifest.get('schema_version')!r}"
+        )
+    if manifest.get("artifact_type") != "market_signal_consumer_contract_registry":
+        raise SignalConsumerContractError(
+            "consumer contract manifest artifact_type mismatch: "
+            f"{manifest.get('artifact_type')!r}"
+        )
+    for field in (
+        "registry_path",
+        "registry_sha256",
+        "registry_size_bytes",
+        "registry_schema_version",
+        "canonical_input",
+        "consumer_count",
+        "known_consumer_count",
+        "missing_known_consumers",
+        "all_known_consumers_present",
+    ):
+        if field not in manifest:
+            raise SignalConsumerContractError(
+                f"consumer contract manifest missing field: {field}"
+            )
+    if not isinstance(manifest["missing_known_consumers"], list):
+        raise SignalConsumerContractError(
+            "consumer contract manifest missing_known_consumers must be a list"
+        )
+    if not isinstance(manifest["all_known_consumers_present"], bool):
+        raise SignalConsumerContractError(
+            "consumer contract manifest all_known_consumers_present must be a bool"
+        )
+
+
+def _resolve_manifest_registry_path(manifest_path: Path, value: str) -> Path:
+    raw_path = Path(value.strip())
+    if not value.strip():
+        raise SignalConsumerContractError(
+            "consumer contract manifest registry_path must not be empty"
+        )
+    if raw_path.is_absolute() or ".." in raw_path.parts:
+        raise SignalConsumerContractError(
+            "consumer contract manifest registry_path must stay inside manifest directory"
+        )
+    registry_path = (manifest_path.parent / raw_path).resolve()
+    if not registry_path.exists():
+        raise SignalConsumerContractError(
+            "consumer contract manifest registry_path does not exist: "
+            f"{value}"
+        )
+    return registry_path
+
+
+def _validate_consumer_contract_registry_manifest_consistency(
+    manifest: Mapping[str, Any],
+    *,
+    registry_summary: Mapping[str, Any],
+) -> None:
+    expected_values = {
+        "registry_sha256": registry_summary["sha256"],
+        "registry_size_bytes": registry_summary["size_bytes"],
+        "registry_schema_version": registry_summary["schema_version"],
+        "canonical_input": registry_summary["canonical_input"],
+        "consumer_count": registry_summary["consumer_count"],
+        "known_consumer_count": registry_summary["known_consumer_count"],
+        "missing_known_consumers": registry_summary["missing_known_consumers"],
+        "all_known_consumers_present": registry_summary["all_known_consumers_present"],
+    }
+    for field, expected in expected_values.items():
+        if manifest[field] != expected:
+            raise SignalConsumerContractError(
+                f"consumer contract manifest {field} mismatch: "
+                f"{manifest[field]!r} != {expected!r}"
+            )
 
 
 def _validate_consumer_contract_record(

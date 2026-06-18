@@ -17,7 +17,9 @@ from market_signal_sources.artifacts.consumer_contracts import (
     consumer_contract_registry_payload,
     known_signal_consumers,
     validate_consumer_contract_registry_file,
+    validate_consumer_contract_registry_manifest,
     write_consumer_contract_registry,
+    write_consumer_contract_registry_artifacts,
 )
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
@@ -347,6 +349,73 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     )
     assert require_all_result == 2
     assert "missing known consumers" in capsys.readouterr().err
+
+
+def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> None:
+    output_dir = tmp_path / "contracts"
+
+    summary = write_consumer_contract_registry_artifacts(output_dir)
+    registry_path = output_dir / "market_signal_consumers.json"
+    manifest_path = output_dir / "market_signal_consumers.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert summary["manifest_path"] == str(manifest_path)
+    assert summary["registry_path"] == str(registry_path)
+    assert summary["manifest_schema_version"] == (
+        "market_signal_consumer_contract_manifest.v1"
+    )
+    assert summary["registry_schema_version"] == "market_signal_consumer_contracts.v1"
+    assert summary["registry_sha256"] == _sha256(registry_path)
+    assert summary["manifest_sha256"] == _sha256(manifest_path)
+    assert summary["all_known_consumers_present"] is True
+    assert manifest["registry_path"] == "market_signal_consumers.json"
+    assert manifest["registry_sha256"] == _sha256(registry_path)
+
+    validation_summary = validate_consumer_contract_registry_manifest(
+        manifest_path,
+        require_all_known_consumers=True,
+    )
+
+    assert validation_summary["registry_sha256"] == _sha256(registry_path)
+    assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
+    assert validation_summary["consumer_count"] == 3
+
+    cli_output_dir = tmp_path / "cli-contracts"
+    result = list_contracts_main(
+        [
+            "--output-dir",
+            str(cli_output_dir),
+            "--pretty",
+        ]
+    )
+    assert result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    cli_manifest_path = cli_output_dir / "market_signal_consumers.manifest.json"
+    assert cli_summary["manifest_path"] == str(cli_manifest_path)
+    assert cli_summary["registry_sha256"] == _sha256(
+        cli_output_dir / "market_signal_consumers.json"
+    )
+
+    validate_result = list_contracts_main(
+        [
+            "--validate-manifest",
+            str(cli_manifest_path),
+            "--require-all-known-consumers",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_validate_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_summary["manifest_sha256"] == _sha256(cli_manifest_path)
+
+    registry_payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry_path.write_text(
+        json.dumps(registry_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SignalConsumerContractError, match="sha256 mismatch"):
+        validate_consumer_contract_registry_manifest(manifest_path)
 
 
 def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_path) -> None:

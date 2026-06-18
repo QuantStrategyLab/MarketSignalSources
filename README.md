@@ -78,11 +78,30 @@ python -m market_signal_sources.cli.list_consumer_contracts \
 
 The printed summary includes `sha256`, `size_bytes`, `schema_version`,
 `canonical_input`, and `consumer_count`.
+For platform handoff, publish the registry with a manifest that pins the
+registry path, schema, SHA-256, size, consumer count, and known-consumer
+coverage:
+
+```bash
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --output-dir ./data/output/contracts \
+  --pretty
+```
+
 Platform CI can validate the same artifact before using it as a contract source:
 
 ```bash
 python -m market_signal_sources.cli.list_consumer_contracts \
   --validate-json ./data/output/market_signal_consumers.json \
+  --require-all-known-consumers \
+  --pretty
+```
+
+When a manifest is available, validate the manifest and linked registry together:
+
+```bash
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --validate-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
   --require-all-known-consumers \
   --pretty
 ```

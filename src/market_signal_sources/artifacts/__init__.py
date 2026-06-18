@@ -11,6 +11,7 @@ from .signal_bundle import (
 )
 from .consumer_contracts import (
     CONSUMER_REQUIRED_INDICATOR_FIELDS,
+    MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION,
     MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION,
     SignalConsumerContractError,
     consumer_contract_for,
@@ -18,7 +19,9 @@ from .consumer_contracts import (
     known_signal_consumers,
     validate_consumer_contract_registry,
     validate_consumer_contract_registry_file,
+    validate_consumer_contract_registry_manifest,
     write_consumer_contract_registry,
+    write_consumer_contract_registry_artifacts,
 )
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
 from .validation import (
@@ -42,6 +45,7 @@ __all__ = [
     "FRESHNESS_FRESH",
     "MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION",
     "MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION",
+    "MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION",
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
@@ -55,6 +59,7 @@ __all__ = [
     "known_signal_consumers",
     "validate_consumer_contract_registry",
     "validate_consumer_contract_registry_file",
+    "validate_consumer_contract_registry_manifest",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
@@ -68,5 +73,6 @@ __all__ = [
     "validate_signal_bundle_manifest_for_consumer",
     "write_research_export_manifest",
     "write_consumer_contract_registry",
+    "write_consumer_contract_registry_artifacts",
     "write_signal_bundle_artifacts",
 ]
