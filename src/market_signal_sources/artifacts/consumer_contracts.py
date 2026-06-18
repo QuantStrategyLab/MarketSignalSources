@@ -23,6 +23,18 @@ CONSUMER_REQUIRED_INDICATOR_FIELDS: dict[str, dict[str, tuple[str, ...]]] = {
         "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple"),
     },
 }
+_FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "cookie",
+        "credential",
+        "password",
+        "secret",
+        "signed_url",
+        "token",
+    }
+)
 
 
 class SignalConsumerContractError(ValueError):
@@ -106,6 +118,54 @@ def write_consumer_contract_registry(
     }
 
 
+def validate_consumer_contract_registry_file(path: str | PathLike[str]) -> dict[str, Any]:
+    """Validate a consumer contract registry artifact and return audit metadata."""
+
+    registry_path = Path(path)
+    with registry_path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    validate_consumer_contract_registry(payload)
+    contracts = payload["contracts"]
+    return {
+        "path": str(registry_path),
+        "schema_version": payload["schema_version"],
+        "canonical_input": payload["canonical_input"],
+        "consumer_count": len(contracts),
+        "consumers": [
+            str(contract["consumer"])
+            for contract in contracts
+        ],
+        "sha256": _sha256_file(registry_path),
+        "size_bytes": registry_path.stat().st_size,
+    }
+
+
+def validate_consumer_contract_registry(payload: Mapping[str, Any]) -> None:
+    """Validate a JSON-safe consumer contract registry payload."""
+
+    if not isinstance(payload, Mapping):
+        raise SignalConsumerContractError("consumer contract registry must be a mapping")
+    _validate_no_sensitive_fields(payload)
+    if payload.get("schema_version") != MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION:
+        raise SignalConsumerContractError(
+            "unsupported consumer contract registry schema_version: "
+            f"{payload.get('schema_version')!r}"
+        )
+    if payload.get("canonical_input") != CANONICAL_INPUT_DERIVED_INDICATORS:
+        raise SignalConsumerContractError(
+            "consumer contract registry canonical_input mismatch: "
+            f"{payload.get('canonical_input')!r}"
+        )
+    contracts = payload.get("contracts")
+    if not isinstance(contracts, list) or not contracts:
+        raise SignalConsumerContractError(
+            "consumer contract registry contracts must be a non-empty list"
+        )
+    seen_consumers: set[str] = set()
+    for contract in contracts:
+        _validate_consumer_contract_record(contract, seen_consumers=seen_consumers)
+
+
 def _contract_record(
     consumer: str,
     required_fields_by_symbol: Mapping[str, Iterable[str]],
@@ -121,6 +181,70 @@ def _contract_record(
             for symbol, fields in sorted(required_fields_by_symbol.items())
         },
     }
+
+
+def _validate_consumer_contract_record(
+    contract: object,
+    *,
+    seen_consumers: set[str],
+) -> None:
+    if not isinstance(contract, Mapping):
+        raise SignalConsumerContractError("consumer contract entries must be mappings")
+    consumer = str(contract.get("consumer", "")).strip()
+    if not consumer:
+        raise SignalConsumerContractError("consumer contract missing consumer")
+    if consumer in seen_consumers:
+        raise SignalConsumerContractError(f"duplicate consumer contract: {consumer}")
+    seen_consumers.add(consumer)
+    if contract.get("canonical_input") != CANONICAL_INPUT_DERIVED_INDICATORS:
+        raise SignalConsumerContractError(
+            f"consumer contract canonical_input mismatch for {consumer}"
+        )
+    fields_by_symbol = contract.get("required_indicator_fields_by_symbol")
+    if not isinstance(fields_by_symbol, Mapping) or not fields_by_symbol:
+        raise SignalConsumerContractError(
+            f"consumer contract {consumer} missing required indicator fields"
+        )
+    expected = required_indicator_fields_for_consumer(consumer)
+    normalized_fields: dict[str, tuple[str, ...]] = {}
+    for symbol, fields in fields_by_symbol.items():
+        normalized_symbol = str(symbol).strip()
+        if not normalized_symbol:
+            raise SignalConsumerContractError(
+                f"consumer contract {consumer} has empty symbol"
+            )
+        if not isinstance(fields, list) or not fields:
+            raise SignalConsumerContractError(
+                f"consumer contract {consumer} fields for {normalized_symbol} must be a non-empty list"
+            )
+        normalized = tuple(str(field).strip() for field in fields)
+        if any(not field for field in normalized):
+            raise SignalConsumerContractError(
+                f"consumer contract {consumer} fields for {normalized_symbol} include empty values"
+            )
+        if len(set(normalized)) != len(normalized):
+            raise SignalConsumerContractError(
+                f"consumer contract {consumer} fields for {normalized_symbol} include duplicates"
+            )
+        normalized_fields[normalized_symbol] = normalized
+    if normalized_fields != expected:
+        raise SignalConsumerContractError(
+            f"consumer contract {consumer} required fields drift from registry"
+        )
+
+
+def _validate_no_sensitive_fields(value: object, *, path: str = "registry") -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            key_text = str(key).lower()
+            if any(fragment in key_text for fragment in _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS):
+                raise SignalConsumerContractError(
+                    f"consumer contract registry contains forbidden sensitive key at {path}.{key}"
+                )
+            _validate_no_sensitive_fields(nested, path=f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            _validate_no_sensitive_fields(nested, path=f"{path}[{index}]")
 
 
 def _sha256_file(path: Path) -> str:

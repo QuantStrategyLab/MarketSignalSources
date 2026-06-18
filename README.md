@@ -78,6 +78,16 @@ python -m market_signal_sources.cli.list_consumer_contracts \
 
 The printed summary includes `sha256`, `size_bytes`, `schema_version`,
 `canonical_input`, and `consumer_count`.
+Platform CI can validate the same artifact before using it as a contract source:
+
+```bash
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --validate-json ./data/output/market_signal_consumers.json \
+  --pretty
+```
+
+Validation rejects schema drift, unknown consumers, duplicate fields, and
+forbidden sensitive key names such as token, secret, cookie, or signed URL.
 
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 

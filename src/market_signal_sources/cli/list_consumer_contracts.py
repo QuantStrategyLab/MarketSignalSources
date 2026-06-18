@@ -8,6 +8,7 @@ import sys
 from market_signal_sources.artifacts.consumer_contracts import (
     SignalConsumerContractError,
     consumer_contract_registry_payload,
+    validate_consumer_contract_registry_file,
     write_consumer_contract_registry,
 )
 
@@ -17,7 +18,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.output_json is not None:
+        if args.validate_json is not None:
+            if args.output_json is not None or args.consumer:
+                raise SignalConsumerContractError(
+                    "provide --validate-json without --consumer or --output-json"
+                )
+            payload = validate_consumer_contract_registry_file(args.validate_json)
+        elif args.output_json is not None:
             payload = write_consumer_contract_registry(
                 args.output_json,
                 consumers=args.consumer,
@@ -46,6 +53,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-json",
         help="Write the registry JSON artifact and print hash metadata.",
+    )
+    parser.add_argument(
+        "--validate-json",
+        help="Validate a registry JSON artifact and print hash metadata.",
     )
     parser.add_argument("--pretty", action="store_true")
     return parser

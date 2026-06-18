@@ -16,6 +16,8 @@ from .artifacts.consumer_contracts import (
     consumer_contract_for,
     consumer_contract_registry_payload,
     known_signal_consumers,
+    validate_consumer_contract_registry,
+    validate_consumer_contract_registry_file,
     write_consumer_contract_registry,
 )
 from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
@@ -63,6 +65,8 @@ __all__ = [
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
     "validate_research_export_manifest",
+    "validate_consumer_contract_registry",
+    "validate_consumer_contract_registry_file",
     "validate_signal_bundle",
     "validate_signal_bundle_for_consumer",
     "validate_signal_bundle_indicator_fields",

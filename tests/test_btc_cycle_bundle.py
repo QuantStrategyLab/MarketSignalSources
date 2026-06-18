@@ -13,8 +13,10 @@ from market_signal_sources.artifacts.signal_bundle import (
     write_signal_bundle_artifacts,
 )
 from market_signal_sources.artifacts.consumer_contracts import (
+    SignalConsumerContractError,
     consumer_contract_registry_payload,
     known_signal_consumers,
+    validate_consumer_contract_registry_file,
     write_consumer_contract_registry,
 )
 from market_signal_sources.artifacts.validation import (
@@ -312,6 +314,40 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     assert cli_payload["contracts"][0]["consumer"] == (
         "research:ibit_btc_ahr999_mayer_precomputed_variants"
     )
+
+    validate_summary = validate_consumer_contract_registry_file(output_json)
+    assert validate_summary["sha256"] == _sha256(output_json)
+    assert validate_summary["consumers"] == [
+        "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    ]
+
+    validate_result = list_contracts_main(
+        [
+            "--validate-json",
+            str(output_json),
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_validate_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_summary["sha256"] == _sha256(output_json)
+    assert cli_validate_summary["consumer_count"] == 1
+
+
+def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
+    output_json = tmp_path / "contracts.json"
+    write_consumer_contract_registry(
+        output_json,
+        consumers=("us_equity:ibit_smart_dca",),
+    )
+    payload = json.loads(output_json.read_text(encoding="utf-8"))
+    payload["contracts"][0]["required_indicator_fields_by_symbol"]["BTC-USD"].append(
+        "unexpected_metric"
+    )
+    output_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SignalConsumerContractError, match="drift"):
+        validate_consumer_contract_registry_file(output_json)
 
 
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:

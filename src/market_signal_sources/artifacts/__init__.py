@@ -16,6 +16,8 @@ from .consumer_contracts import (
     consumer_contract_for,
     consumer_contract_registry_payload,
     known_signal_consumers,
+    validate_consumer_contract_registry,
+    validate_consumer_contract_registry_file,
     write_consumer_contract_registry,
 )
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
@@ -51,6 +53,8 @@ __all__ = [
     "consumer_contract_for",
     "consumer_contract_registry_payload",
     "known_signal_consumers",
+    "validate_consumer_contract_registry",
+    "validate_consumer_contract_registry_file",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
