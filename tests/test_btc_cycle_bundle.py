@@ -14,9 +14,14 @@ from market_signal_sources.artifacts.signal_bundle import (
 )
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
+    required_indicator_fields_for_consumer,
+    signal_bundle_consumer_audit_summary,
     validate_research_export_manifest,
     validate_signal_bundle,
+    validate_signal_bundle_for_consumer,
+    validate_signal_bundle_index_for_consumer,
     validate_signal_bundle_index,
+    validate_signal_bundle_manifest_for_consumer,
     validate_signal_bundle_manifest,
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
@@ -115,10 +120,19 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
 
     manifest_summary = validate_signal_bundle_manifest(paths["manifest"])
     index_summary = validate_signal_bundle_index(paths["index"], as_of="2025-09-18")
+    consumer_summary = validate_signal_bundle_index_for_consumer(
+        paths["index"],
+        as_of="2025-09-18",
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+    )
     assert manifest_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
     assert index_summary["index_schema_version"] == "market_signal_index.v1"
     assert index_summary["indicator_field_count_by_symbol"]["BTC-USD"] == 13
     assert "ahr999" in index_summary["indicator_fields_by_symbol"]["BTC-USD"]
+    assert consumer_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    assert consumer_summary["required_indicator_fields_by_symbol"] == {
+        "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")
+    }
 
 
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
@@ -155,6 +169,8 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
             str(output_dir / "index.json"),
             "--as-of",
             "2025-09-18",
+            "--consumer",
+            "research:ibit_btc_ahr999_mayer_precomputed_variants",
             "--pretty",
         ]
     )
@@ -162,6 +178,54 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     audit_summary = json.loads(capsys.readouterr().out)
     assert audit_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
     assert audit_summary["indicator_field_count_by_symbol"] == {"BTC-USD": 13}
+    assert audit_summary["required_indicator_fields_by_symbol"] == {
+        "BTC-USD": ["ahr999", "ahr999_sma", "mayer_multiple"]
+    }
+
+
+def test_signal_bundle_consumer_contract_rejects_missing_required_field(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    del bundle["derived_indicators"]["BTC-USD"]["ahr999_sma"]
+
+    with pytest.raises(SignalBundleValidationError, match="ahr999_sma"):
+        validate_signal_bundle_for_consumer(
+            bundle,
+            consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+        )
+
+
+def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+    )
+    manifest_summary = validate_signal_bundle_manifest_for_consumer(
+        paths["manifest"],
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+    )
+    direct_summary = signal_bundle_consumer_audit_summary(
+        bundle,
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+    )
+
+    assert required_indicator_fields_for_consumer(
+        "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    ) == {"BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")}
+    assert manifest_summary["bundle_sha256"] == _sha256(paths["signal_bundle"])
+    assert direct_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
 
 
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:

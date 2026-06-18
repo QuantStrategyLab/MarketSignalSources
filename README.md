@@ -48,8 +48,13 @@ Or resolve through the local index:
 python -m market_signal_sources.cli.validate_signal_bundle \
   --index ./data/output/crypto/btc/derived_indicators/2026-06-19/index.json \
   --as-of 2026-06-20 \
+  --consumer research:ibit_btc_ahr999_mayer_precomputed_variants \
   --pretty
 ```
+
+The optional `--consumer` check validates downstream field coverage before
+publishing. For `research:ibit_btc_ahr999_mayer_precomputed_variants`, the
+`BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
 
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 

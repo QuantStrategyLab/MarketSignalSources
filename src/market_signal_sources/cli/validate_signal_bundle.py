@@ -8,7 +8,9 @@ import sys
 
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
+    validate_signal_bundle_index_for_consumer,
     validate_signal_bundle_index,
+    validate_signal_bundle_manifest_for_consumer,
     validate_signal_bundle_manifest,
 )
 
@@ -21,17 +23,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.index is not None and args.manifest is not None:
             raise SignalBundleValidationError("provide either manifest or --index, not both")
         if args.index is not None:
-            summary = validate_signal_bundle_index(
-                args.index,
-                as_of=args.as_of,
-                bundle_id=args.bundle_id,
-                expected_canonical_input=args.canonical_input,
-            )
+            if args.consumer:
+                summary = validate_signal_bundle_index_for_consumer(
+                    args.index,
+                    consumer=args.consumer,
+                    as_of=args.as_of,
+                    bundle_id=args.bundle_id,
+                    expected_canonical_input=args.canonical_input,
+                )
+            else:
+                summary = validate_signal_bundle_index(
+                    args.index,
+                    as_of=args.as_of,
+                    bundle_id=args.bundle_id,
+                    expected_canonical_input=args.canonical_input,
+                )
         elif args.manifest is not None:
-            summary = validate_signal_bundle_manifest(
-                args.manifest,
-                expected_canonical_input=args.canonical_input,
-            )
+            if args.consumer:
+                summary = validate_signal_bundle_manifest_for_consumer(
+                    args.manifest,
+                    consumer=args.consumer,
+                    expected_canonical_input=args.canonical_input,
+                )
+            else:
+                summary = validate_signal_bundle_manifest(
+                    args.manifest,
+                    expected_canonical_input=args.canonical_input,
+                )
         else:
             raise SignalBundleValidationError("provide a manifest path or --index")
     except (OSError, SignalBundleValidationError) as exc:
@@ -54,6 +72,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--as-of", help="Select the latest index entry at or before this as_of date.")
     parser.add_argument("--bundle-id", help="Require a specific bundle_id from the index.")
     parser.add_argument("--canonical-input", default="derived_indicators")
+    parser.add_argument(
+        "--consumer",
+        help="Validate required indicator fields for a known strategy or research consumer.",
+    )
     parser.add_argument("--pretty", action="store_true")
     return parser
 

@@ -42,6 +42,17 @@ _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
         "token",
     }
 )
+REQUIRED_INDICATOR_FIELDS_BY_CONSUMER: dict[str, dict[str, tuple[str, ...]]] = {
+    "us_equity:ibit_smart_dca": {
+        "BTC-USD": ("ahr999", "mayer_multiple"),
+    },
+    "research:ibit_btc_ahr999_mayer_precomputed": {
+        "BTC-USD": ("ahr999", "mayer_multiple"),
+    },
+    "research:ibit_btc_ahr999_mayer_precomputed_variants": {
+        "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple"),
+    },
+}
 
 
 class SignalBundleValidationError(ValueError):
@@ -144,6 +155,191 @@ def validate_signal_bundle_index(
     )
     summary = validate_signal_bundle_manifest(
         manifest_path,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    summary.update(
+        {
+            "index_path": str(index_path.resolve()),
+            "index_schema_version": str(index.get("schema_version", "")),
+            "index_bundle_count": len(index.get("bundles", ()) or ()),
+        }
+    )
+    return summary
+
+
+def required_indicator_fields_for_consumer(
+    consumer: str,
+) -> dict[str, tuple[str, ...]]:
+    """Return required derived indicator fields for a known downstream consumer."""
+
+    normalized = str(consumer or "").strip()
+    if normalized not in REQUIRED_INDICATOR_FIELDS_BY_CONSUMER:
+        known = ", ".join(sorted(REQUIRED_INDICATOR_FIELDS_BY_CONSUMER))
+        raise SignalBundleValidationError(
+            f"unknown signal bundle consumer: {consumer!r}; known: {known}"
+        )
+    return {
+        symbol: tuple(fields)
+        for symbol, fields in REQUIRED_INDICATOR_FIELDS_BY_CONSUMER[normalized].items()
+    }
+
+
+def validate_signal_bundle_indicator_fields(
+    bundle: Mapping[str, Any],
+    *,
+    required_fields_by_symbol: Mapping[str, Iterable[str]],
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> None:
+    """Validate that a bundle covers required derived indicator fields."""
+
+    validate_signal_bundle(
+        bundle,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    indicators = bundle[expected_canonical_input]
+    if not isinstance(indicators, Mapping):
+        raise SignalBundleValidationError(f"{expected_canonical_input} must be a mapping")
+    normalized_indicators = {
+        _normalize_symbol(symbol): payload
+        for symbol, payload in indicators.items()
+    }
+    for symbol, raw_required_fields in required_fields_by_symbol.items():
+        normalized_symbol = _normalize_symbol(symbol)
+        payload = normalized_indicators.get(normalized_symbol)
+        if not isinstance(payload, Mapping):
+            raise SignalBundleValidationError(
+                f"{expected_canonical_input} missing required symbol: {symbol}"
+            )
+        available = {str(field).strip().lower() for field in payload}
+        required_fields = tuple(
+            str(field).strip()
+            for field in raw_required_fields
+            if str(field).strip()
+        )
+        missing = [
+            field
+            for field in required_fields
+            if field.lower() not in available
+        ]
+        if missing:
+            raise SignalBundleValidationError(
+                f"{expected_canonical_input}[{symbol!r}] missing required fields: "
+                + ", ".join(missing)
+            )
+
+
+def validate_signal_bundle_for_consumer(
+    bundle: Mapping[str, Any],
+    *,
+    consumer: str,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> None:
+    """Validate a signal bundle against a known downstream consumer contract."""
+
+    validate_signal_bundle_indicator_fields(
+        bundle,
+        required_fields_by_symbol=required_indicator_fields_for_consumer(consumer),
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+
+
+def signal_bundle_consumer_audit_summary(
+    bundle: Mapping[str, Any],
+    *,
+    consumer: str,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> dict[str, Any]:
+    """Return audit summary after validating consumer-specific field coverage."""
+
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer=consumer,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    summary = signal_bundle_audit_summary(bundle)
+    summary.update(
+        {
+            "consumer": str(consumer),
+            "required_indicator_fields_by_symbol": required_indicator_fields_for_consumer(
+                consumer
+            ),
+        }
+    )
+    return summary
+
+
+def validate_signal_bundle_manifest_for_consumer(
+    path: str | PathLike[str],
+    *,
+    consumer: str,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> dict[str, Any]:
+    """Validate a manifest-referenced bundle against a consumer contract."""
+
+    summary = validate_signal_bundle_manifest(
+        path,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    manifest_path = Path(path)
+    manifest = _load_json_mapping(manifest_path, label="signal bundle manifest")
+    bundle_path = _resolve_relative_artifact_path(
+        manifest_path.parent.resolve(),
+        manifest["bundle_path"],
+        owner="signal bundle manifest",
+        field="bundle_path",
+    )
+    bundle = _load_json_mapping(bundle_path, label="signal bundle")
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer=consumer,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    summary.update(
+        {
+            "consumer": str(consumer),
+            "required_indicator_fields_by_symbol": required_indicator_fields_for_consumer(
+                consumer
+            ),
+        }
+    )
+    return summary
+
+
+def validate_signal_bundle_index_for_consumer(
+    path: str | PathLike[str],
+    *,
+    consumer: str,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    as_of: str | None = None,
+    bundle_id: str | None = None,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> dict[str, Any]:
+    """Validate an index-selected bundle against a consumer contract."""
+
+    index_path = Path(path)
+    index = _load_json_mapping(index_path, label="signal bundle index")
+    _validate_index(index)
+    manifest_path = _resolve_manifest_from_index(
+        index_path,
+        index,
+        expected_canonical_input=expected_canonical_input,
+        as_of=as_of,
+        bundle_id=bundle_id,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    summary = validate_signal_bundle_manifest_for_consumer(
+        manifest_path,
+        consumer=consumer,
         expected_canonical_input=expected_canonical_input,
         accepted_freshness_statuses=accepted_freshness_statuses,
     )
@@ -605,6 +801,10 @@ def _indicator_fields_by_symbol(bundle: Mapping[str, Any]) -> dict[str, tuple[st
             )
         fields_by_symbol[str(symbol)] = tuple(sorted(str(field) for field in payload))
     return fields_by_symbol
+
+
+def _normalize_symbol(symbol: object) -> str:
+    return str(symbol or "").strip().upper().removesuffix(".US")
 
 
 def _validate_no_sensitive_fields(
