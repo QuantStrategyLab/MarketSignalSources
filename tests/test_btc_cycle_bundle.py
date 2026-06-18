@@ -12,6 +12,10 @@ from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     write_signal_bundle_artifacts,
 )
+from market_signal_sources.artifacts.quality_report import (
+    build_ohlcv_quality_report,
+    write_ohlcv_quality_report,
+)
 from market_signal_sources.artifacts.consumer_contracts import (
     SignalConsumerContractError,
     consumer_contract_registry_payload,
@@ -62,6 +66,45 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def test_ohlcv_quality_report_flags_local_csv_issues(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    pd.DataFrame(
+        {
+            "date": [
+                "2025-01-01",
+                "2025-01-01",
+                "2025-01-05",
+                "bad-date",
+                "2025-01-06",
+            ],
+            "close": [100.0, 101.0, 102.0, 103.0, 0.0],
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0],
+            "low": [99.0, 100.0, 101.0, 102.0, 103.0],
+            "volume": [1.0, 1.0, 1.0, 1.0, 1.0],
+        }
+    ).to_csv(input_csv, index=False)
+
+    report = build_ohlcv_quality_report(
+        input_csv,
+        as_of="2025-01-05",
+        min_history_rows=4,
+        max_allowed_gap_days=1,
+    )
+
+    assert report["schema_version"] == "market_signal_quality_report.v1"
+    assert report["artifact_type"] == "local_ohlcv_quality_report"
+    assert report["quality_status"] == "fail"
+    assert report["raw_row_count"] == 5
+    assert report["normalized_row_count"] == 2
+    assert report["duplicate_date_count"] == 1
+    assert report["invalid_date_count"] == 1
+    assert report["non_positive_close_count"] == 1
+    assert report["max_gap_days"] == 4
+    assert "insufficient_history_rows" in report["failure_reasons"]
+    assert "duplicate_dates_collapsed" in report["warning_reasons"]
+    assert "date_gaps_above_threshold" in report["warning_reasons"]
+
+
 def test_compute_btc_cycle_indicators_from_local_prices() -> None:
     indicators = compute_btc_cycle_indicators(_btc_frame(), as_of="2025-09-17")
 
@@ -106,6 +149,14 @@ def test_build_btc_cycle_indicator_frame_exports_daily_research_rows() -> None:
 
 
 def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    quality_report_path = tmp_path / "quality_report.json"
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
     bundle = build_btc_cycle_signal_bundle(
         _btc_frame(),
         as_of="2025-09-17",
@@ -113,11 +164,16 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
         generated_at="2025-09-17T00:15:00Z",
     )
 
-    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+    paths = write_signal_bundle_artifacts(
+        tmp_path,
+        bundle,
+        quality_report_path=quality_report_path,
+    )
 
     signal_bundle = json.loads(paths["signal_bundle"].read_text(encoding="utf-8"))
     manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
     index = json.loads(paths["index"].read_text(encoding="utf-8"))
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
     payload = signal_bundle["derived_indicators"]["BTC-USD"]
 
     assert signal_bundle["schema_version"] == "market_signal_bundle.v1"
@@ -125,6 +181,9 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     assert payload["provider_timestamp"] == "2025-09-17T00:00:00Z"
     assert manifest["schema_version"] == "market_signal_manifest.v1"
     assert manifest["bundle_sha256"] == _sha256(paths["signal_bundle"])
+    assert manifest["quality_report_path"] == "quality_report.json"
+    assert manifest["quality_report_sha256"] == _sha256(quality_report_path)
+    assert quality_report["quality_status"] == "pass"
     assert index["schema_version"] == "market_signal_index.v1"
     assert index["bundles"][0]["manifest_sha256"] == _sha256(paths["manifest"])
 
@@ -136,6 +195,9 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
         consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
     )
     assert manifest_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
+    assert manifest_summary["quality_status"] == "pass"
+    assert manifest_summary["quality_normalized_row_count"] == 260
+    assert manifest_summary["quality_report_sha256"] == _sha256(quality_report_path)
     assert index_summary["index_schema_version"] == "market_signal_index.v1"
     assert index_summary["indicator_field_count_by_symbol"]["BTC-USD"] == 13
     assert "ahr999" in index_summary["indicator_fields_by_symbol"]["BTC-USD"]
@@ -143,6 +205,13 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     assert consumer_summary["required_indicator_fields_by_symbol"] == {
         "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")
     }
+
+    quality_report_path.write_text(
+        json.dumps({**quality_report, "quality_status": "warn"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(SignalBundleValidationError, match="quality_report_sha256"):
+        validate_signal_bundle_manifest(paths["manifest"])
 
 
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
@@ -170,8 +239,14 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     assert (output_dir / "signal_bundle.json").exists()
     assert (output_dir / "manifest.json").exists()
     assert (output_dir / "index.json").exists()
+    assert (output_dir / "quality_report.json").exists()
+    assert summary["artifacts"]["quality_report"] == str(output_dir / "quality_report.json")
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    quality_report = json.loads((output_dir / "quality_report.json").read_text(encoding="utf-8"))
     assert manifest["bundle_sha256"] == _sha256(output_dir / "signal_bundle.json")
+    assert manifest["quality_report_sha256"] == _sha256(output_dir / "quality_report.json")
+    assert quality_report["quality_status"] == "pass"
+    assert quality_report["normalized_row_count"] == 260
 
     validate_result = validate_main(
         [
@@ -188,6 +263,8 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     audit_summary = json.loads(capsys.readouterr().out)
     assert audit_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
     assert audit_summary["indicator_field_count_by_symbol"] == {"BTC-USD": 13}
+    assert audit_summary["quality_status"] == "pass"
+    assert audit_summary["quality_normalized_row_count"] == 260
     assert audit_summary["required_indicator_fields_by_symbol"] == {
         "BTC-USD": ["ahr999", "ahr999_sma", "mayer_multiple"]
     }

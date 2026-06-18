@@ -19,6 +19,7 @@ from .consumer_contracts import (
     SignalConsumerContractError,
     required_indicator_fields_for_consumer as _required_indicator_fields_for_consumer,
 )
+from .quality_report import QUALITY_REPORT_SCHEMA_VERSION
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION
 
 
@@ -108,6 +109,10 @@ def validate_signal_bundle_manifest(
             "signal bundle sha256 mismatch: "
             f"expected {expected_sha256}, got {actual_sha256}"
         )
+    quality_report_summary = _validate_optional_quality_report_reference(
+        manifest,
+        manifest_root=manifest_path.parent.resolve(),
+    )
 
     bundle = _load_json_mapping(bundle_path, label="signal bundle")
     validate_signal_bundle(
@@ -124,6 +129,7 @@ def validate_signal_bundle_manifest(
             "bundle_sha256": expected_sha256,
         }
     )
+    summary.update(quality_report_summary)
     return summary
 
 
@@ -488,6 +494,98 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> None:
     for field in ("bundle_path", "bundle_sha256", "bundle_id", "as_of", "canonical_input"):
         if not _has_non_empty_value(manifest, field):
             raise SignalBundleValidationError(f"signal bundle manifest missing field: {field}")
+    quality_path_present = _has_non_empty_value(manifest, "quality_report_path")
+    quality_sha_present = _has_non_empty_value(manifest, "quality_report_sha256")
+    if quality_path_present != quality_sha_present:
+        raise SignalBundleValidationError(
+            "signal bundle manifest quality_report_path and "
+            "quality_report_sha256 must be provided together"
+        )
+
+
+def _validate_optional_quality_report_reference(
+    manifest: Mapping[str, Any],
+    *,
+    manifest_root: Path,
+) -> dict[str, Any]:
+    if not _has_non_empty_value(manifest, "quality_report_path"):
+        return {}
+    quality_path = _resolve_relative_artifact_path(
+        manifest_root,
+        manifest["quality_report_path"],
+        owner="signal bundle manifest",
+        field="quality_report_path",
+    )
+    expected_sha256 = str(manifest["quality_report_sha256"]).strip().lower()
+    actual_sha256 = sha256_file(quality_path)
+    if actual_sha256 != expected_sha256:
+        raise SignalBundleValidationError(
+            "signal bundle quality_report_sha256 mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}"
+        )
+    quality_report = _load_json_mapping(quality_path, label="quality report")
+    _validate_quality_report(quality_report)
+    return {
+        "quality_report_path": str(quality_path.resolve()),
+        "quality_report_sha256": expected_sha256,
+        "quality_status": str(quality_report["quality_status"]),
+        "quality_failure_reasons": tuple(quality_report["failure_reasons"]),
+        "quality_warning_reasons": tuple(quality_report["warning_reasons"]),
+        "quality_raw_row_count": int(quality_report["raw_row_count"]),
+        "quality_normalized_row_count": int(quality_report["normalized_row_count"]),
+        "quality_first_date": str(quality_report["first_date"]),
+        "quality_last_date": str(quality_report["last_date"]),
+    }
+
+
+def _validate_quality_report(report: Mapping[str, Any]) -> None:
+    _validate_no_sensitive_fields(
+        report,
+        owner="quality report",
+        path="quality_report",
+    )
+    if report.get("schema_version") != QUALITY_REPORT_SCHEMA_VERSION:
+        raise SignalBundleValidationError(
+            "unsupported quality report schema_version: "
+            f"{report.get('schema_version')!r}"
+        )
+    if report.get("artifact_type") != "local_ohlcv_quality_report":
+        raise SignalBundleValidationError(
+            "quality report artifact_type mismatch: "
+            f"{report.get('artifact_type')!r}"
+        )
+    for field in (
+        "quality_status",
+        "failure_reasons",
+        "warning_reasons",
+        "raw_row_count",
+        "normalized_row_count",
+        "first_date",
+        "last_date",
+    ):
+        if field not in report:
+            raise SignalBundleValidationError(f"quality report missing field: {field}")
+    if not _has_non_empty_value(report, "quality_status"):
+        raise SignalBundleValidationError("quality report missing field: quality_status")
+    if report["quality_status"] not in {"pass", "warn", "fail"}:
+        raise SignalBundleValidationError(
+            f"unsupported quality_status: {report['quality_status']!r}"
+        )
+    if not _is_string_sequence(report["failure_reasons"]):
+        raise SignalBundleValidationError("quality report failure_reasons must be strings")
+    if not _is_string_sequence(report["warning_reasons"]):
+        raise SignalBundleValidationError("quality report warning_reasons must be strings")
+    for field in ("raw_row_count", "normalized_row_count"):
+        value = report[field]
+        if not isinstance(value, int) or value < 0:
+            raise SignalBundleValidationError(
+                f"quality report {field} must be a non-negative integer"
+            )
+    if report["quality_status"] == "fail":
+        raise SignalBundleValidationError(
+            "quality report status is fail: "
+            + ",".join(str(reason) for reason in report["failure_reasons"])
+        )
 
 
 def _validate_index(index: Mapping[str, Any]) -> None:

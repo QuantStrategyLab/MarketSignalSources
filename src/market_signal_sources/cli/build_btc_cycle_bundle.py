@@ -13,6 +13,7 @@ from market_signal_sources.artifacts.signal_bundle import (
     sha256_file,
     write_signal_bundle_artifacts,
 )
+from market_signal_sources.artifacts.quality_report import write_ohlcv_quality_report
 from market_signal_sources.providers import load_ohlcv_csv
 
 
@@ -42,7 +43,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             generated_at=args.generated_at,
             freshness_status=args.freshness_status,
         )
-        artifact_paths = write_signal_bundle_artifacts(args.output_dir, bundle)
+        output_dir = Path(args.output_dir)
+        quality_report_path = output_dir / "quality_report.json"
+        write_ohlcv_quality_report(
+            quality_report_path,
+            args.input_csv,
+            date_column=args.date_column,
+            close_column=args.close_column,
+            high_column=args.high_column,
+            low_column=args.low_column,
+            volume_column=args.volume_column,
+            as_of=args.as_of,
+            min_history_rows=200,
+            max_allowed_gap_days=1,
+        )
+        artifact_paths = write_signal_bundle_artifacts(
+            output_dir,
+            bundle,
+            quality_report_path=quality_report_path,
+        )
+        artifact_paths["quality_report"] = quality_report_path
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

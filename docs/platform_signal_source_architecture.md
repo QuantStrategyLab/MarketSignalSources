@@ -19,6 +19,8 @@ The MVP has four layers:
 
 The platform-facing outputs are:
 
+- `market_signal_quality_report.v1`: raw input quality proof, row counts, date
+  range, duplicate/gap checks, and source file hash.
 - `market_signal_bundle.v1`: runtime signal payload for platform injection.
 - `market_signal_manifest.v1`: hash, provenance, freshness, and schema proof for
   one bundle.
@@ -67,8 +69,10 @@ credential paths, or service lifecycle ownership.
 ## Publication Flow
 
 1. Build a source bundle from local or upstream-approved input data.
-2. Write `signal_bundle.json`, `manifest.json`, and `index.json`.
-3. Validate the manifest or index with the target consumer identifier.
+2. Write `quality_report.json`, `signal_bundle.json`, `manifest.json`, and
+   `index.json`.
+3. Validate the quality report hash through `manifest.json`, then validate the
+   manifest or index with the target consumer identifier.
 4. Publish the consumer contract registry with its manifest.
 5. Strategy CI validates both the signal manifest and the consumer contract
    registry before allowing a strategy config to reference the artifact.
@@ -92,6 +96,7 @@ transforms and canonical inputs without changing existing consumers:
 Each new family should define:
 
 - raw provider input assumptions
+- quality report thresholds
 - deterministic transform version
 - output schema and canonical input
 - minimum history and freshness window

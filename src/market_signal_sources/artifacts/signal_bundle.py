@@ -80,6 +80,8 @@ def build_btc_cycle_signal_bundle(
 def write_signal_bundle_artifacts(
     output_dir: str | PathLike[str],
     bundle: dict[str, Any],
+    *,
+    quality_report_path: str | PathLike[str] | None = None,
 ) -> dict[str, Path]:
     """Write signal bundle, manifest, and local index artifacts."""
 
@@ -91,7 +93,12 @@ def write_signal_bundle_artifacts(
 
     _write_json(bundle_path, bundle)
     bundle_sha256 = _sha256_file(bundle_path)
-    manifest = _manifest_for_bundle(bundle, bundle_sha256=bundle_sha256)
+    manifest = _manifest_for_bundle(
+        bundle,
+        bundle_sha256=bundle_sha256,
+        output_root=output_path,
+        quality_report_path=quality_report_path,
+    )
     _write_json(manifest_path, manifest)
     manifest_sha256 = _sha256_file(manifest_path)
     index = _index_for_manifest(manifest, manifest_sha256=manifest_sha256)
@@ -104,11 +111,17 @@ def write_signal_bundle_artifacts(
     }
 
 
-def _manifest_for_bundle(bundle: dict[str, Any], *, bundle_sha256: str) -> dict[str, Any]:
+def _manifest_for_bundle(
+    bundle: dict[str, Any],
+    *,
+    bundle_sha256: str,
+    output_root: Path,
+    quality_report_path: str | PathLike[str] | None,
+) -> dict[str, Any]:
     freshness = bundle.get("freshness")
     if not isinstance(freshness, dict):
         raise ValueError("bundle freshness must be a mapping")
-    return {
+    manifest = {
         "schema_version": MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
         "bundle_path": "signal_bundle.json",
         "bundle_sha256": bundle_sha256,
@@ -118,6 +131,20 @@ def _manifest_for_bundle(bundle: dict[str, Any], *, bundle_sha256: str) -> dict[
         "bundle_schema_version": bundle["schema_version"],
         "freshness_status": freshness.get("status", ""),
     }
+    if quality_report_path is not None:
+        quality_path = Path(quality_report_path).resolve()
+        root = output_root.resolve()
+        try:
+            relative_quality_path = quality_path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("quality_report_path must stay inside output_dir") from exc
+        manifest.update(
+            {
+                "quality_report_path": relative_quality_path.as_posix(),
+                "quality_report_sha256": _sha256_file(quality_path),
+            }
+        )
+    return manifest
 
 
 def _index_for_manifest(manifest: dict[str, Any], *, manifest_sha256: str) -> dict[str, Any]:
