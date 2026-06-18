@@ -10,6 +10,9 @@ This repository starts with a narrow MVP:
 
 It intentionally does not fetch vendor data, load secrets, call broker APIs, or make trading decisions.
 
+For platform integration boundaries and the intended multi-market extension path,
+see [Platform Signal Source Architecture](docs/platform_signal_source_architecture.md).
+
 ## BTC Cycle Bundle
 
 Example:
