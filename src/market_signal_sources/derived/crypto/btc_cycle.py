@@ -61,6 +61,36 @@ def compute_btc_cycle_indicators(
     }
 
 
+def build_btc_cycle_indicator_frame(
+    ohlcv: pd.DataFrame,
+    *,
+    as_of: str | pd.Timestamp | None = None,
+    min_history: int = 200,
+) -> pd.DataFrame:
+    """Build a daily BTC cycle indicator frame for offline research exports."""
+
+    frame = _normalize_ohlcv(ohlcv)
+    if as_of is not None:
+        cutoff = pd.Timestamp(as_of).tz_localize(None).normalize()
+        frame = frame.loc[frame["date"] <= cutoff].reset_index(drop=True)
+    rows: list[dict[str, float | str]] = []
+    for index in range(int(min_history) - 1, len(frame)):
+        history = frame.iloc[: index + 1]
+        date = pd.Timestamp(history.iloc[-1]["date"]).normalize().date().isoformat()
+        row = {
+            "date": date,
+            **compute_btc_cycle_indicators(
+                history,
+                as_of=date,
+                min_history=min_history,
+            ),
+        }
+        rows.append(row)
+    if not rows:
+        raise ValueError(f"BTC cycle research export requires at least {int(min_history)} rows")
+    return pd.DataFrame(rows)
+
+
 def _normalize_ohlcv(ohlcv: pd.DataFrame) -> pd.DataFrame:
     required = {"date", "close"}
     missing = sorted(required - set(ohlcv.columns))

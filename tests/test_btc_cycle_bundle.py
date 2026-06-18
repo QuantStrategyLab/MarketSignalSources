@@ -19,8 +19,12 @@ from market_signal_sources.artifacts.validation import (
     validate_signal_bundle_manifest,
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
+from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.validate_signal_bundle import main as validate_main
-from market_signal_sources.derived.crypto.btc_cycle import compute_btc_cycle_indicators
+from market_signal_sources.derived.crypto.btc_cycle import (
+    build_btc_cycle_indicator_frame,
+    compute_btc_cycle_indicators,
+)
 
 
 def _btc_frame(rows: int = 260) -> pd.DataFrame:
@@ -58,6 +62,30 @@ def test_compute_btc_cycle_indicators_from_local_prices() -> None:
         250_000.0 / float(indicators["ahr999_estimate_price"]),
         rel_tol=1e-12,
     )
+
+
+def test_build_btc_cycle_indicator_frame_exports_daily_research_rows() -> None:
+    frame = build_btc_cycle_indicator_frame(_btc_frame(205), as_of="2025-07-23")
+
+    assert list(frame.columns) == [
+        "date",
+        "close",
+        "sma200",
+        "gma200",
+        "high252",
+        "drawdown_252d",
+        "sma200_gap",
+        "rsi14",
+        "mayer_multiple",
+        "ahr999",
+        "ahr999_sma",
+        "ahr999_estimate_price",
+        "cycle_indicator_source",
+    ]
+    assert len(frame) == 5
+    assert frame.iloc[0]["date"] == "2025-07-19"
+    assert frame.iloc[-1]["date"] == "2025-07-23"
+    assert frame.iloc[-1]["mayer_multiple"] == 1.0
 
 
 def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None:
@@ -132,6 +160,32 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     audit_summary = json.loads(capsys.readouterr().out)
     assert audit_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
     assert audit_summary["indicator_field_count_by_symbol"] == {"BTC-USD": 13}
+
+
+def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
+    input_csv = tmp_path / "btc.csv"
+    output_csv = tmp_path / "research" / "btc_cycle.csv"
+    _btc_frame(205).to_csv(input_csv, index=False)
+
+    result = export_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--as-of",
+            "2025-07-23",
+            "--pretty",
+        ]
+    )
+
+    assert result == 0
+    summary = json.loads(capsys.readouterr().out)
+    exported = pd.read_csv(output_csv)
+    assert summary["row_count"] == 5
+    assert summary["last_date"] == "2025-07-23"
+    assert "ahr999" in summary["columns"]
+    assert "mayer_multiple" in exported.columns
 
 
 def test_validator_rejects_sensitive_fields() -> None:

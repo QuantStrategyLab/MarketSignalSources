@@ -18,6 +18,7 @@ from .artifacts.validation import (
 )
 from .derived.crypto.btc_cycle import (
     BITCOIN_GENESIS_DATE,
+    build_btc_cycle_indicator_frame,
     compute_btc_cycle_indicators,
 )
 
@@ -30,6 +31,7 @@ __all__ = [
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "SignalBundleValidationError",
     "build_btc_cycle_signal_bundle",
+    "build_btc_cycle_indicator_frame",
     "compute_btc_cycle_indicators",
     "signal_bundle_audit_summary",
     "validate_signal_bundle",

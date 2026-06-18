@@ -51,6 +51,20 @@ python -m market_signal_sources.cli.validate_signal_bundle \
   --pretty
 ```
 
+Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
+
+```bash
+python -m market_signal_sources.cli.export_btc_cycle_research_csv \
+  --input-csv ./btc_daily.csv \
+  --output-csv ./data/output/research/btc_cycle_indicators.csv \
+  --as-of 2026-06-19 \
+  --pretty
+```
+
+The exported CSV includes `date`, `close`, `ahr999`, `ahr999_sma`, `mayer_multiple`,
+`sma200_gap`, `drawdown_252d`, and related deterministic price-derived fields. It
+is intended for offline research tooling, not direct platform injection.
+
 Downstream platforms should validate the manifest and bundle hashes, freshness, provenance, and canonical input before injecting:
 
 ```python
