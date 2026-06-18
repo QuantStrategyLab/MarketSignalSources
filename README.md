@@ -56,6 +56,19 @@ The optional `--consumer` check validates downstream field coverage before
 publishing. For `research:ibit_btc_ahr999_mayer_precomputed_variants`, the
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
 
+Consumer field requirements are also exposed as a JSON registry so platform and
+strategy repositories can run drift checks without importing this package at
+runtime:
+
+```bash
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --consumer us_equity:ibit_smart_dca \
+  --pretty
+```
+
+The registry uses `market_signal_consumer_contracts.v1` and lists each
+consumer's canonical input plus required indicator fields by symbol.
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash

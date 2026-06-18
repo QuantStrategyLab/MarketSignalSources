@@ -12,6 +12,10 @@ from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     write_signal_bundle_artifacts,
 )
+from market_signal_sources.artifacts.consumer_contracts import (
+    consumer_contract_registry_payload,
+    known_signal_consumers,
+)
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
     required_indicator_fields_for_consumer,
@@ -26,6 +30,7 @@ from market_signal_sources.artifacts.validation import (
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
+from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
 from market_signal_sources.cli.validate_research_export import main as validate_research_main
 from market_signal_sources.cli.validate_signal_bundle import main as validate_main
 from market_signal_sources.derived.crypto.btc_cycle import (
@@ -226,6 +231,51 @@ def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_pa
     ) == {"BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")}
     assert manifest_summary["bundle_sha256"] == _sha256(paths["signal_bundle"])
     assert direct_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
+
+
+def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
+    payload = consumer_contract_registry_payload(
+        consumers=("research:ibit_btc_ahr999_mayer_precomputed_variants",)
+    )
+
+    assert known_signal_consumers() == (
+        "research:ibit_btc_ahr999_mayer_precomputed",
+        "research:ibit_btc_ahr999_mayer_precomputed_variants",
+        "us_equity:ibit_smart_dca",
+    )
+    assert payload == {
+        "schema_version": "market_signal_consumer_contracts.v1",
+        "canonical_input": "derived_indicators",
+        "contracts": [
+            {
+                "consumer": "research:ibit_btc_ahr999_mayer_precomputed_variants",
+                "canonical_input": "derived_indicators",
+                "required_indicator_fields_by_symbol": {
+                    "BTC-USD": ["ahr999", "ahr999_sma", "mayer_multiple"],
+                },
+            }
+        ],
+    }
+
+    result = list_contracts_main(
+        [
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--pretty",
+        ]
+    )
+    assert result == 0
+    cli_payload = json.loads(capsys.readouterr().out)
+    assert cli_payload["schema_version"] == "market_signal_consumer_contracts.v1"
+    assert cli_payload["contracts"] == [
+        {
+            "consumer": "us_equity:ibit_smart_dca",
+            "canonical_input": "derived_indicators",
+            "required_indicator_fields_by_symbol": {
+                "BTC-USD": ["ahr999", "mayer_multiple"],
+            },
+        }
+    ]
 
 
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:

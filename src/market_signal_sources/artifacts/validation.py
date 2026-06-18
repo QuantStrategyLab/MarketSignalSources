@@ -14,6 +14,11 @@ from .signal_bundle import (
     MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
     sha256_file,
 )
+from .consumer_contracts import (
+    CONSUMER_REQUIRED_INDICATOR_FIELDS,
+    SignalConsumerContractError,
+    required_indicator_fields_for_consumer as _required_indicator_fields_for_consumer,
+)
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION
 
 
@@ -42,17 +47,7 @@ _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
         "token",
     }
 )
-REQUIRED_INDICATOR_FIELDS_BY_CONSUMER: dict[str, dict[str, tuple[str, ...]]] = {
-    "us_equity:ibit_smart_dca": {
-        "BTC-USD": ("ahr999", "mayer_multiple"),
-    },
-    "research:ibit_btc_ahr999_mayer_precomputed": {
-        "BTC-USD": ("ahr999", "mayer_multiple"),
-    },
-    "research:ibit_btc_ahr999_mayer_precomputed_variants": {
-        "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple"),
-    },
-}
+REQUIRED_INDICATOR_FIELDS_BY_CONSUMER = CONSUMER_REQUIRED_INDICATOR_FIELDS
 
 
 class SignalBundleValidationError(ValueError):
@@ -173,16 +168,10 @@ def required_indicator_fields_for_consumer(
 ) -> dict[str, tuple[str, ...]]:
     """Return required derived indicator fields for a known downstream consumer."""
 
-    normalized = str(consumer or "").strip()
-    if normalized not in REQUIRED_INDICATOR_FIELDS_BY_CONSUMER:
-        known = ", ".join(sorted(REQUIRED_INDICATOR_FIELDS_BY_CONSUMER))
-        raise SignalBundleValidationError(
-            f"unknown signal bundle consumer: {consumer!r}; known: {known}"
-        )
-    return {
-        symbol: tuple(fields)
-        for symbol, fields in REQUIRED_INDICATOR_FIELDS_BY_CONSUMER[normalized].items()
-    }
+    try:
+        return _required_indicator_fields_for_consumer(consumer)
+    except SignalConsumerContractError as exc:
+        raise SignalBundleValidationError(str(exc)) from exc
 
 
 def validate_signal_bundle_indicator_fields(

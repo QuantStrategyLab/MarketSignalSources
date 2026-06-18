@@ -9,6 +9,14 @@ from .artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     write_signal_bundle_artifacts,
 )
+from .artifacts.consumer_contracts import (
+    CONSUMER_REQUIRED_INDICATOR_FIELDS,
+    MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION,
+    SignalConsumerContractError,
+    consumer_contract_for,
+    consumer_contract_registry_payload,
+    known_signal_consumers,
+)
 from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
 from .artifacts.validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
@@ -36,14 +44,20 @@ __all__ = [
     "CANONICAL_INPUT_DERIVED_INDICATORS",
     "FRESHNESS_FRESH",
     "MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION",
+    "MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION",
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
+    "CONSUMER_REQUIRED_INDICATOR_FIELDS",
     "REQUIRED_INDICATOR_FIELDS_BY_CONSUMER",
+    "SignalConsumerContractError",
     "SignalBundleValidationError",
     "build_btc_cycle_signal_bundle",
     "build_btc_cycle_indicator_frame",
+    "consumer_contract_for",
+    "consumer_contract_registry_payload",
     "compute_btc_cycle_indicators",
+    "known_signal_consumers",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
