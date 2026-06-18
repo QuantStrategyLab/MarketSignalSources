@@ -34,6 +34,23 @@ Outputs:
 - `manifest.json`
 - `index.json`
 
+Validate the generated artifacts before publishing or handing them to a platform:
+
+```bash
+python -m market_signal_sources.cli.validate_signal_bundle \
+  ./data/output/crypto/btc/derived_indicators/2026-06-19/manifest.json \
+  --pretty
+```
+
+Or resolve through the local index:
+
+```bash
+python -m market_signal_sources.cli.validate_signal_bundle \
+  --index ./data/output/crypto/btc/derived_indicators/2026-06-19/index.json \
+  --as-of 2026-06-20 \
+  --pretty
+```
+
 Downstream platforms should validate the manifest and bundle hashes, freshness, provenance, and canonical input before injecting:
 
 ```python

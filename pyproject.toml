@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 build-btc-cycle-bundle = "market_signal_sources.cli.build_btc_cycle_bundle:main"
+validate-signal-bundle = "market_signal_sources.cli.validate_signal_bundle:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
