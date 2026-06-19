@@ -22,9 +22,15 @@ MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION = (
 MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION = (
     "market_signal_runtime_plan_audit_match.v1"
 )
+MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SCHEMA_VERSION = (
+    "market_signal_runtime_adapter_config.v1"
+)
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
 _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
 _PLAN_AUDIT_MATCH_ARTIFACT_TYPE = "market_signal_runtime_plan_audit_match"
+_ADAPTER_CONFIG_VALIDATION_ARTIFACT_TYPE = (
+    "market_signal_runtime_adapter_config_validation"
+)
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
         "api_key",
@@ -169,6 +175,75 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
             audit_summary.get("matched_source_families", ())
         ),
         "consumer_contracts": tuple(audit_summary.get("consumer_contracts", ())),
+    }
+
+
+def validate_runtime_adapter_config(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a platform runtime signal adapter configuration mapping."""
+
+    _reject_sensitive_keys(config)
+    schema_version = str(config.get("schema_version", "")).strip()
+    if schema_version and schema_version != MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SCHEMA_VERSION:
+        raise ValueError("runtime adapter config schema_version mismatch")
+    consumer = _required_config_string(config, "signal_consumer")
+    if consumer.startswith("research:"):
+        raise ValueError("runtime adapter config cannot use research consumer")
+    handoff_index = _optional_config_string(config, "signal_handoff_index")
+    handoff_manifest = _optional_config_string(config, "signal_handoff_manifest")
+    if bool(handoff_index) == bool(handoff_manifest):
+        raise ValueError(
+            "runtime adapter config must provide exactly one handoff lookup"
+        )
+    as_of = _optional_config_string(config, "signal_as_of")
+    if handoff_index and not as_of:
+        raise ValueError("runtime adapter config index lookup requires signal_as_of")
+    freshness_statuses = _freshness_statuses_from_config(config)
+    saved_audit = _optional_config_string(config, "saved_consumption_audit_json")
+    saved_plan = _optional_config_string(config, "saved_runtime_plan_json")
+    if saved_plan and not saved_audit:
+        raise ValueError(
+            "runtime adapter config saved_runtime_plan_json requires "
+            "saved_consumption_audit_json"
+        )
+    handoff_source = (
+        "platform_handoff_index"
+        if handoff_index
+        else "platform_handoff_manifest"
+    )
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SCHEMA_VERSION,
+        "artifact_type": _ADAPTER_CONFIG_VALIDATION_ARTIFACT_TYPE,
+        "valid": True,
+        "strategy": _optional_config_string(config, "strategy"),
+        "consumer": consumer,
+        "handoff_source": handoff_source,
+        "handoff_path": handoff_index or handoff_manifest,
+        "as_of": as_of,
+        "accepted_freshness_statuses": freshness_statuses,
+        "saved_consumption_audit_json": saved_audit,
+        "saved_runtime_plan_json": saved_plan,
+        "runtime_plan_requires_audit_match": bool(saved_plan),
+    }
+
+
+def validate_runtime_adapter_config_file(
+    path: str | PathLike[str],
+) -> dict[str, Any]:
+    """Validate a saved market_signal_runtime_adapter_config.v1 JSON config."""
+
+    config_path = Path(path)
+    payload = _load_json_mapping(
+        config_path,
+        artifact_name="runtime adapter config",
+    )
+    summary = validate_runtime_adapter_config(payload)
+    return {
+        **summary,
+        "path": str(config_path),
+        "sha256": _sha256_file(config_path),
+        "size_bytes": config_path.stat().st_size,
     }
 
 
@@ -470,6 +545,32 @@ def _required_string(payload: Mapping[str, Any], field: str) -> str:
     if not value:
         raise ValueError(f"consumption audit missing required field: {field}")
     return value
+
+
+def _required_config_string(payload: Mapping[str, Any], field: str) -> str:
+    value = _optional_config_string(payload, field)
+    if not value:
+        raise ValueError(f"runtime adapter config missing required field: {field}")
+    return value
+
+
+def _optional_config_string(payload: Mapping[str, Any], field: str) -> str:
+    value = str(payload.get(field, "") or "").strip()
+    return value
+
+
+def _freshness_statuses_from_config(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    raw_value = payload.get("accepted_freshness_statuses")
+    if not isinstance(raw_value, list | tuple):
+        raise ValueError(
+            "runtime adapter config accepted_freshness_statuses must be a list"
+        )
+    statuses = tuple(str(value or "").strip() for value in raw_value)
+    if not statuses or any(not value for value in statuses):
+        raise ValueError(
+            "runtime adapter config accepted_freshness_statuses must be non-empty"
+        )
+    return statuses
 
 
 def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:

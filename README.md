@@ -326,6 +326,15 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --pretty
 ```
 
+Platform CI can also validate the strategy-owned signal adapter config before
+resolving a handoff:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-adapter-config-json ./deploy/ibit_smart_dca.signal_adapter.json \
+  --pretty
+```
+
 For platform lookup across dated handoffs, publish a handoff index and validate
 it by consumer and `as_of`:
 

@@ -51,6 +51,10 @@ The platform-facing outputs are:
 - `market_signal_runtime_plan_audit_match.v1`: validation summary proving a
   saved runtime plan still matches the saved consumption audit identity, bundle,
   manifest hashes, source families, consumer contracts, and payload path.
+- `market_signal_runtime_adapter_config.v1`: platform-owned config shape for
+  selecting a handoff, consumer id, freshness policy, and saved deployment
+  artifacts. This repository validates the shape and invalid combinations, but
+  platforms own the file and rollout state.
 
 For offline strategy research, `research_export.v1` can also pin a
 `quality_report` file record. That keeps public or local context-source quality

@@ -205,6 +205,7 @@ Recommended configuration shape:
 
 ```json
 {
+  "schema_version": "market_signal_runtime_adapter_config.v1",
   "strategy": "ibit_smart_dca",
   "signal_consumer": "us_equity:ibit_smart_dca",
   "signal_handoff_index": "./data/output/platform_handoffs/index.json",
@@ -213,6 +214,14 @@ Recommended configuration shape:
   "saved_consumption_audit_json": "./deploy/ibit_smart_dca.audit.json",
   "saved_runtime_plan_json": "./deploy/ibit_smart_dca.runtime_plan.json"
 }
+```
+
+Platform CI can validate that adapter config before it validates the handoff:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-adapter-config-json ./deploy/ibit_smart_dca.signal_adapter.json \
+  --pretty
 ```
 
 Required adapter config semantics:

@@ -50,6 +50,7 @@ from market_signal_sources.artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
+    validate_runtime_adapter_config,
     validate_runtime_signal_injection_plan_file,
     validate_runtime_signal_injection_plan_matches_audit,
     write_consumption_audit_artifact,
@@ -1949,6 +1950,49 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert bad_plan_match_result == 2
     assert "as_of!=as_of" in capsys.readouterr().err
+    runtime_adapter_config = {
+        "schema_version": "market_signal_runtime_adapter_config.v1",
+        "strategy": "ibit_smart_dca",
+        "signal_consumer": "us_equity:ibit_smart_dca",
+        "signal_handoff_index": str(cli_index_path),
+        "signal_as_of": "2025-09-18",
+        "accepted_freshness_statuses": ["fresh"],
+        "saved_consumption_audit_json": str(cli_audit_artifact_path),
+        "saved_runtime_plan_json": str(cli_plan_artifact_path),
+    }
+    adapter_config_summary = validate_runtime_adapter_config(runtime_adapter_config)
+    assert adapter_config_summary["schema_version"] == (
+        "market_signal_runtime_adapter_config.v1"
+    )
+    assert adapter_config_summary["strategy"] == "ibit_smart_dca"
+    assert adapter_config_summary["handoff_source"] == "platform_handoff_index"
+    assert adapter_config_summary["runtime_plan_requires_audit_match"] is True
+    runtime_adapter_config_path = tmp_path / "runtime_adapter_config.json"
+    runtime_adapter_config_path.write_text(
+        json.dumps(runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    validate_runtime_adapter_config_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-config-json",
+            str(runtime_adapter_config_path),
+            "--pretty",
+        ]
+    )
+    assert validate_runtime_adapter_config_result == 0
+    cli_validate_adapter_config = json.loads(capsys.readouterr().out)
+    assert cli_validate_adapter_config["artifact_type"] == (
+        "market_signal_runtime_adapter_config_validation"
+    )
+    assert cli_validate_adapter_config["sha256"] == _sha256(
+        runtime_adapter_config_path
+    )
+    bad_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "signal_consumer": "research:ibit_btc_ahr999_precomputed",
+    }
+    with pytest.raises(ValueError, match="research consumer"):
+        validate_runtime_adapter_config(bad_runtime_adapter_config)
 
     with pytest.raises(ValueError, match="consumer is required"):
         audit_signal_consumption(platform_handoff_manifest=handoff_path, consumer="")
