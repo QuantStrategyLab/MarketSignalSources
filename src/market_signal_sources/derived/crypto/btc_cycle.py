@@ -7,6 +7,14 @@ import pandas as pd
 
 
 BITCOIN_GENESIS_DATE = pd.Timestamp("2009-01-03")
+BTC_RESEARCH_INDICATOR_FIELDS: tuple[str, ...] = (
+    "ahr999_365d_percentile",
+    "ahr999_30d_slope",
+    "mayer_multiple_365d_percentile",
+    "realized_volatility_30d",
+    "momentum_90d",
+)
+IndicatorValue = float | str | None
 
 
 def compute_btc_cycle_indicators(
@@ -14,7 +22,7 @@ def compute_btc_cycle_indicators(
     *,
     as_of: str | pd.Timestamp | None = None,
     min_history: int = 200,
-) -> dict[str, float | str]:
+) -> dict[str, IndicatorValue]:
     """Compute deterministic BTC cycle indicators from local daily OHLCV data."""
 
     frame = _normalize_ohlcv(ohlcv)
@@ -24,6 +32,60 @@ def compute_btc_cycle_indicators(
     if len(frame) < int(min_history):
         raise ValueError(f"BTC cycle indicators require at least {int(min_history)} rows")
 
+    trailing_history_rows = max(int(min_history), 252) + 365 - 1
+    indicator_frame = _build_btc_cycle_indicator_frame_from_normalized(
+        frame.tail(trailing_history_rows).reset_index(drop=True),
+        min_history=int(min_history),
+    )
+    latest = indicator_frame.iloc[-1].to_dict()
+    latest.pop("date", None)
+    return {
+        str(field): _json_safe_indicator_value(value)
+        for field, value in latest.items()
+    }
+
+
+def build_btc_cycle_indicator_frame(
+    ohlcv: pd.DataFrame,
+    *,
+    as_of: str | pd.Timestamp | None = None,
+    min_history: int = 200,
+) -> pd.DataFrame:
+    """Build a daily BTC cycle indicator frame for offline research exports."""
+
+    frame = _normalize_ohlcv(ohlcv)
+    if as_of is not None:
+        cutoff = pd.Timestamp(as_of).tz_localize(None).normalize()
+        frame = frame.loc[frame["date"] <= cutoff].reset_index(drop=True)
+    return _build_btc_cycle_indicator_frame_from_normalized(
+        frame,
+        min_history=int(min_history),
+    )
+
+
+def _build_btc_cycle_indicator_frame_from_normalized(
+    frame: pd.DataFrame,
+    *,
+    min_history: int,
+) -> pd.DataFrame:
+    rows: list[dict[str, IndicatorValue]] = []
+    for index in range(int(min_history) - 1, len(frame)):
+        history = frame.iloc[: index + 1]
+        date = pd.Timestamp(history.iloc[-1]["date"]).normalize().date().isoformat()
+        rows.append(
+            {
+                "date": date,
+                **_compute_btc_cycle_base_indicators(history),
+            }
+        )
+    if not rows:
+        raise ValueError(f"BTC cycle research export requires at least {int(min_history)} rows")
+    return _with_research_cycle_fields(pd.DataFrame(rows))
+
+
+def _compute_btc_cycle_base_indicators(
+    frame: pd.DataFrame,
+) -> dict[str, IndicatorValue]:
     latest_row = frame.iloc[-1]
     latest_date = pd.Timestamp(latest_row["date"]).normalize()
     close_series = frame["close"].astype(float)
@@ -57,38 +119,39 @@ def compute_btc_cycle_indicators(
         "ahr999": ahr999,
         "ahr999_sma": ahr999_sma,
         "ahr999_estimate_price": estimate_price,
+        "realized_volatility_30d": _realized_volatility(close_series),
+        "momentum_90d": _momentum(close_series, periods=90),
         "cycle_indicator_source": "price_derived",
     }
 
 
-def build_btc_cycle_indicator_frame(
-    ohlcv: pd.DataFrame,
-    *,
-    as_of: str | pd.Timestamp | None = None,
-    min_history: int = 200,
-) -> pd.DataFrame:
-    """Build a daily BTC cycle indicator frame for offline research exports."""
-
-    frame = _normalize_ohlcv(ohlcv)
-    if as_of is not None:
-        cutoff = pd.Timestamp(as_of).tz_localize(None).normalize()
-        frame = frame.loc[frame["date"] <= cutoff].reset_index(drop=True)
-    rows: list[dict[str, float | str]] = []
-    for index in range(int(min_history) - 1, len(frame)):
-        history = frame.iloc[: index + 1]
-        date = pd.Timestamp(history.iloc[-1]["date"]).normalize().date().isoformat()
-        row = {
-            "date": date,
-            **compute_btc_cycle_indicators(
-                history,
-                as_of=date,
-                min_history=min_history,
-            ),
-        }
-        rows.append(row)
-    if not rows:
-        raise ValueError(f"BTC cycle research export requires at least {int(min_history)} rows")
-    return pd.DataFrame(rows)
+def _with_research_cycle_fields(indicator_frame: pd.DataFrame) -> pd.DataFrame:
+    frame = indicator_frame.copy()
+    ahr999 = pd.to_numeric(frame["ahr999"], errors="coerce")
+    mayer_multiple = pd.to_numeric(frame["mayer_multiple"], errors="coerce")
+    frame["ahr999_365d_percentile"] = _trailing_percentile(ahr999, window=365)
+    frame["ahr999_30d_slope"] = _trailing_slope(ahr999, periods=30)
+    frame["mayer_multiple_365d_percentile"] = _trailing_percentile(
+        mayer_multiple,
+        window=365,
+    )
+    ordered_columns = [
+        "date",
+        "close",
+        "sma200",
+        "gma200",
+        "high252",
+        "drawdown_252d",
+        "sma200_gap",
+        "rsi14",
+        "mayer_multiple",
+        "ahr999",
+        "ahr999_sma",
+        "ahr999_estimate_price",
+        *BTC_RESEARCH_INDICATOR_FIELDS,
+        "cycle_indicator_source",
+    ]
+    return frame.loc[:, ordered_columns]
 
 
 def _normalize_ohlcv(ohlcv: pd.DataFrame) -> pd.DataFrame:
@@ -139,3 +202,72 @@ def _rsi(series: pd.Series, window: int = 14) -> float:
     if avg_loss <= 0.0:
         return 100.0 if avg_gain > 0.0 else 50.0
     return float(100.0 - 100.0 / (1.0 + avg_gain / avg_loss))
+
+
+def _realized_volatility(series: pd.Series, window: int = 30) -> float | None:
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if len(values) <= window:
+        return None
+    recent = values.iloc[-(window + 1) :]
+    returns = (recent / recent.shift(1)).dropna()
+    returns = returns.loc[returns > 0.0].apply(lambda value: math.log(float(value)))
+    if len(returns) < 2:
+        return None
+    volatility = float(returns.std(ddof=0) * math.sqrt(365.0))
+    return volatility if math.isfinite(volatility) else None
+
+
+def _momentum(series: pd.Series, *, periods: int) -> float | None:
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if len(values) <= periods:
+        return None
+    previous = float(values.iloc[-(periods + 1)])
+    latest = float(values.iloc[-1])
+    if previous <= 0.0:
+        return None
+    momentum = latest / previous - 1.0
+    return momentum if math.isfinite(momentum) else None
+
+
+def _trailing_percentile(series: pd.Series, *, window: int) -> list[float | None]:
+    values = pd.to_numeric(series, errors="coerce")
+    percentiles: list[float | None] = []
+    for index, latest in enumerate(values):
+        if pd.isna(latest):
+            percentiles.append(None)
+            continue
+        window_values = values.iloc[max(0, index - window + 1) : index + 1].dropna()
+        if window_values.empty:
+            percentiles.append(None)
+            continue
+        percentile = float((window_values <= float(latest)).sum() / len(window_values))
+        percentiles.append(percentile)
+    return percentiles
+
+
+def _trailing_slope(series: pd.Series, *, periods: int) -> list[float | None]:
+    values = pd.to_numeric(series, errors="coerce")
+    slopes: list[float | None] = []
+    for index, latest in enumerate(values):
+        if index < periods or pd.isna(latest):
+            slopes.append(None)
+            continue
+        previous = values.iloc[index - periods]
+        if pd.isna(previous):
+            slopes.append(None)
+            continue
+        slope = (float(latest) - float(previous)) / float(periods)
+        slopes.append(slope if math.isfinite(slope) else None)
+    return slopes
+
+
+def _json_safe_indicator_value(value: Any) -> IndicatorValue:
+    if value is None or isinstance(value, str):
+        return value
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    number = float(value)
+    return number if math.isfinite(number) else None

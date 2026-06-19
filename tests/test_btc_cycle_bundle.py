@@ -243,6 +243,11 @@ def test_compute_btc_cycle_indicators_from_local_prices() -> None:
         250_000.0 / float(indicators["ahr999_estimate_price"]),
         rel_tol=1e-12,
     )
+    assert 0.0 <= float(indicators["ahr999_365d_percentile"]) <= 1.0
+    assert float(indicators["ahr999_30d_slope"]) < 0.0
+    assert indicators["mayer_multiple_365d_percentile"] == 1.0
+    assert indicators["realized_volatility_30d"] == 0.0
+    assert indicators["momentum_90d"] == 0.0
 
 
 def test_build_btc_cycle_indicator_frame_exports_daily_research_rows() -> None:
@@ -261,12 +266,21 @@ def test_build_btc_cycle_indicator_frame_exports_daily_research_rows() -> None:
         "ahr999",
         "ahr999_sma",
         "ahr999_estimate_price",
+        "ahr999_365d_percentile",
+        "ahr999_30d_slope",
+        "mayer_multiple_365d_percentile",
+        "realized_volatility_30d",
+        "momentum_90d",
         "cycle_indicator_source",
     ]
     assert len(frame) == 5
     assert frame.iloc[0]["date"] == "2025-07-19"
     assert frame.iloc[-1]["date"] == "2025-07-23"
     assert frame.iloc[-1]["mayer_multiple"] == 1.0
+    assert frame.iloc[-1]["mayer_multiple_365d_percentile"] == 1.0
+    assert pd.isna(frame.iloc[-1]["ahr999_30d_slope"])
+    assert frame.iloc[-1]["realized_volatility_30d"] == 0.0
+    assert frame.iloc[-1]["momentum_90d"] == 0.0
 
 
 def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None:
@@ -337,7 +351,7 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     assert manifest_summary["quality_normalized_row_count"] == 260
     assert manifest_summary["quality_report_sha256"] == _sha256(quality_report_path)
     assert index_summary["index_schema_version"] == "market_signal_index.v1"
-    assert index_summary["indicator_field_count_by_symbol"]["BTC-USD"] == 13
+    assert index_summary["indicator_field_count_by_symbol"]["BTC-USD"] == 18
     assert "us_equity:ibit_smart_dca" in index_summary["compatible_profiles"]
     assert "ahr999" in index_summary["indicator_fields_by_symbol"]["BTC-USD"]
     assert consumer_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
@@ -856,7 +870,7 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     assert validate_result == 0
     audit_summary = json.loads(capsys.readouterr().out)
     assert audit_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
-    assert audit_summary["indicator_field_count_by_symbol"] == {"BTC-USD": 13}
+    assert audit_summary["indicator_field_count_by_symbol"] == {"BTC-USD": 18}
     assert audit_summary["quality_status"] == "pass"
     assert audit_summary["quality_normalized_row_count"] == 260
     assert audit_summary["required_indicator_fields_by_symbol"] == {
@@ -1386,7 +1400,9 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
     assert manifest["min_history"] == 200
     assert "ahr999" in summary["columns"]
+    assert "ahr999_365d_percentile" in summary["columns"]
     assert "mayer_multiple" in exported.columns
+    assert "realized_volatility_30d" in exported.columns
 
     validation_summary = validate_research_export_manifest(
         manifest_path,

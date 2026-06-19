@@ -33,6 +33,8 @@ _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
 
 BTC_CYCLE_DERIVED_INDICATOR_FIELDS: tuple[str, ...] = (
     "ahr999",
+    "ahr999_30d_slope",
+    "ahr999_365d_percentile",
     "ahr999_estimate_price",
     "ahr999_sma",
     "close",
@@ -41,7 +43,10 @@ BTC_CYCLE_DERIVED_INDICATOR_FIELDS: tuple[str, ...] = (
     "gma200",
     "high252",
     "mayer_multiple",
+    "mayer_multiple_365d_percentile",
+    "momentum_90d",
     "provider_timestamp",
+    "realized_volatility_30d",
     "rsi14",
     "sma200",
     "sma200_gap",

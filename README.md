@@ -248,11 +248,13 @@ python -m market_signal_sources.cli.export_btc_cycle_research_csv \
   --pretty
 ```
 
-The exported CSV includes `date`, `close`, `ahr999`, `ahr999_sma`, `mayer_multiple`,
-`sma200_gap`, `drawdown_252d`, and related deterministic price-derived fields. It
-is intended for offline research tooling, not direct platform injection. The
-research manifest records input/output SHA-256 hashes, row count, columns,
-date range, transform, source version, and `min_history`.
+The exported CSV includes `date`, `close`, `ahr999`, `ahr999_sma`,
+`mayer_multiple`, `sma200_gap`, `drawdown_252d`, plus deterministic research
+helper fields such as AHR999/Mayer trailing percentiles, AHR999 30-day slope,
+30-day realized volatility, and 90-day momentum. It is intended for offline
+research tooling, not direct platform injection. The research manifest records
+input/output SHA-256 hashes, row count, columns, date range, transform, source
+version, and `min_history`.
 
 Validate the research CSV manifest before handing it to strategy research tooling:
 
