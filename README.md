@@ -13,6 +13,8 @@ It intentionally does not fetch vendor data, load secrets, call broker APIs, or 
 
 For platform integration boundaries and the intended multi-market extension path,
 see [Platform Signal Source Architecture](docs/platform_signal_source_architecture.md).
+For the concrete runtime and research handoff consumption contract, see
+[Platform Consumption Contract](docs/platform_consumption_contract.md).
 
 ## BTC Cycle Bundle
 

@@ -52,6 +52,9 @@ CSVs: validation checks the linked research export hash, verifies that the sourc
 catalog has a family matching the export transform and target research consumer,
 and confirms the consumer registry contains the same contract.
 
+For the platform-side integration checklist and validation gates, see
+[Platform Consumption Contract](platform_consumption_contract.md).
+
 ## Design Pressure
 
 IBIT is a US equity strategy, but its useful signal is crypto-native. That makes
