@@ -302,6 +302,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --pretty
 ```
 
@@ -315,6 +316,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --output-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
   --pretty
 
@@ -333,6 +335,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --output-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
   --pretty
 
@@ -368,6 +371,7 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --handoff-manifest ./data/output/platform_handoff.json \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --pretty
 
 python -m market_signal_sources.cli.build_platform_handoff \
@@ -376,6 +380,7 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --pretty
 ```
 

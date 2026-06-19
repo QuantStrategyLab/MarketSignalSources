@@ -2063,6 +2063,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "signal_handoff_index": str(cli_index_path),
         "signal_as_of": "2025-09-18",
         "accepted_freshness_statuses": ["fresh"],
+        "require_all_known_families": True,
+        "require_all_known_consumers": True,
+        "require_runtime_consumer_coverage": True,
         "saved_consumption_audit_json": str(cli_audit_artifact_path),
         "saved_runtime_plan_json": str(cli_plan_artifact_path),
     }
@@ -2072,6 +2075,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert adapter_config_summary["strategy"] == "ibit_smart_dca"
     assert adapter_config_summary["handoff_source"] == "platform_handoff_index"
+    assert adapter_config_summary["require_all_known_families"] is True
+    assert adapter_config_summary["require_all_known_consumers"] is True
+    assert adapter_config_summary["require_runtime_consumer_coverage"] is True
     assert adapter_config_summary["runtime_plan_requires_audit_match"] is True
     runtime_adapter_config_path = tmp_path / "runtime_adapter_config.json"
     runtime_adapter_config_path.write_text(
@@ -2145,6 +2151,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert deployment_summary["consumer"] == "us_equity:ibit_smart_dca"
     assert deployment_summary["handoff_path"] == str(cli_index_path)
     assert deployment_summary["audit_handoff_path"] == str(cli_index_path)
+    assert deployment_summary["require_all_known_families"] is True
+    assert deployment_summary["require_all_known_consumers"] is True
+    assert deployment_summary["require_runtime_consumer_coverage"] is True
     assert deployment_summary["runtime_plan_matched"] is True
     validate_runtime_adapter_deployment_result = audit_consumption_main(
         [
@@ -2322,6 +2331,12 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "signal_consumer": "research:ibit_btc_ahr999_precomputed",
     }
     with pytest.raises(ValueError, match="research consumer"):
+        validate_runtime_adapter_config(bad_runtime_adapter_config)
+    bad_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "require_runtime_consumer_coverage": "true",
+    }
+    with pytest.raises(ValueError, match="require_runtime_consumer_coverage"):
         validate_runtime_adapter_config(bad_runtime_adapter_config)
 
     with pytest.raises(ValueError, match="consumer is required"):

@@ -226,6 +226,9 @@ Recommended configuration shape:
   "signal_handoff_index": "./data/output/platform_handoffs/index.json",
   "signal_as_of": "2026-06-19",
   "accepted_freshness_statuses": ["fresh"],
+  "require_all_known_families": true,
+  "require_all_known_consumers": true,
+  "require_runtime_consumer_coverage": true,
   "saved_consumption_audit_json": "./deploy/ibit_smart_dca.audit.json",
   "saved_runtime_plan_json": "./deploy/ibit_smart_dca.runtime_plan.json"
 }
@@ -273,6 +276,9 @@ Required adapter config semantics:
 | `signal_handoff_index` / `signal_handoff_manifest` | Provide exactly one lookup source. Use an index when selecting by `as_of`; use a manifest only for a pinned deployment. |
 | `signal_as_of` | Required with `signal_handoff_index`; it selects the latest matching handoff at or before the strategy evaluation date and is recorded as `lookup_as_of` in new consumption audits. |
 | `accepted_freshness_statuses` | Keep fail-closed by default. For production DCA profiles this should usually be `["fresh"]`; broader statuses require a strategy owner decision. |
+| `require_all_known_families` | Optional boolean. Production deploy configs should set this to `true` so startup re-audit fails if the source-family catalog is no longer complete. |
+| `require_all_known_consumers` | Optional boolean. Production deploy configs should set this to `true` so startup re-audit fails if the consumer registry is no longer complete. |
+| `require_runtime_consumer_coverage` | Optional boolean. Production deploy configs should set this to `true` so startup re-audit fails if known runtime consumers lose source-family coverage. |
 | `saved_consumption_audit_json` | Required after deploy approval. Startup should revalidate this file before the strategy is enabled. |
 | `saved_runtime_plan_json` | Optional only if the platform derives the runtime plan in memory. If saved, it must match `saved_consumption_audit_json` before injection. |
 
@@ -283,6 +289,7 @@ Invalid combinations should fail before strategy evaluation:
 - `signal_handoff_index` is set without `signal_as_of`
 - `signal_consumer` starts with `research:`
 - multiple runtime adapter configs target the same `signal_consumer`
+- any `require_*` strict gate config field is non-boolean
 - config-set validation is required to cover all known runtime consumers but a
   consumer is missing
 - deployment-set validation is required to cover all known runtime consumers but

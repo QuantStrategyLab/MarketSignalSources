@@ -253,6 +253,18 @@ def validate_runtime_adapter_config(
     if handoff_index and not as_of:
         raise ValueError("runtime adapter config index lookup requires signal_as_of")
     freshness_statuses = _freshness_statuses_from_config(config)
+    require_all_known_families = _optional_config_bool(
+        config,
+        "require_all_known_families",
+    )
+    require_all_known_consumers = _optional_config_bool(
+        config,
+        "require_all_known_consumers",
+    )
+    require_runtime_consumer_coverage = _optional_config_bool(
+        config,
+        "require_runtime_consumer_coverage",
+    )
     saved_audit = _optional_config_string(config, "saved_consumption_audit_json")
     saved_plan = _optional_config_string(config, "saved_runtime_plan_json")
     if saved_plan and not saved_audit:
@@ -275,6 +287,9 @@ def validate_runtime_adapter_config(
         "handoff_path": handoff_index or handoff_manifest,
         "as_of": as_of,
         "accepted_freshness_statuses": freshness_statuses,
+        "require_all_known_families": require_all_known_families,
+        "require_all_known_consumers": require_all_known_consumers,
+        "require_runtime_consumer_coverage": require_runtime_consumer_coverage,
         "saved_consumption_audit_json": saved_audit,
         "saved_runtime_plan_json": saved_plan,
         "runtime_plan_requires_audit_match": bool(saved_plan),
@@ -428,6 +443,15 @@ def validate_runtime_adapter_deployment_config_file(
         "freshness_status": audit_payload["freshness_status"],
         "accepted_freshness_statuses": config_summary[
             "accepted_freshness_statuses"
+        ],
+        "require_all_known_families": config_summary[
+            "require_all_known_families"
+        ],
+        "require_all_known_consumers": config_summary[
+            "require_all_known_consumers"
+        ],
+        "require_runtime_consumer_coverage": config_summary[
+            "require_runtime_consumer_coverage"
         ],
         "audit_path": str(audit_path),
         "audit_sha256": audit_summary["sha256"],
@@ -878,6 +902,15 @@ def _freshness_statuses_from_config(payload: Mapping[str, Any]) -> tuple[str, ..
     return statuses
 
 
+def _optional_config_bool(payload: Mapping[str, Any], field: str) -> bool:
+    if field not in payload:
+        return False
+    value = payload[field]
+    if not isinstance(value, bool):
+        raise ValueError(f"runtime adapter config {field} must be a bool")
+    return value
+
+
 def _config_relative_path(config_path: Path, raw_path: str) -> Path:
     path = Path(raw_path)
     if path.is_absolute():
@@ -903,6 +936,15 @@ def _current_runtime_consumption_audit(
             accepted_freshness_statuses=config_summary[
                 "accepted_freshness_statuses"
             ],
+            require_all_known_families=bool(
+                config_summary.get("require_all_known_families")
+            ),
+            require_all_known_consumers=bool(
+                config_summary.get("require_all_known_consumers")
+            ),
+            require_runtime_consumer_coverage=bool(
+                config_summary.get("require_runtime_consumer_coverage")
+            ),
         )
     if handoff_source == "platform_handoff_manifest":
         return audit_signal_consumption(
@@ -911,6 +953,15 @@ def _current_runtime_consumption_audit(
             accepted_freshness_statuses=config_summary[
                 "accepted_freshness_statuses"
             ],
+            require_all_known_families=bool(
+                config_summary.get("require_all_known_families")
+            ),
+            require_all_known_consumers=bool(
+                config_summary.get("require_all_known_consumers")
+            ),
+            require_runtime_consumer_coverage=bool(
+                config_summary.get("require_runtime_consumer_coverage")
+            ),
         )
     raise ValueError(f"unsupported runtime adapter handoff_source: {handoff_source}")
 
