@@ -246,6 +246,16 @@ def write_platform_signal_handoff_manifest(
         consumer_registry_manifest_path,
         require_all_known_consumers=require_all_known_consumers,
     )
+    matched_source_families = _matching_source_families(
+        source_catalog_manifest_path,
+        signal_bundle_summary=signal_bundle_summary,
+        consumer=consumer,
+    )
+    _validate_matching_source_families(
+        matched_source_families,
+        consumer=consumer,
+        transform=str(signal_bundle_summary["transform"]),
+    )
 
     payload = _platform_handoff_manifest(
         root=root,
@@ -256,6 +266,7 @@ def write_platform_signal_handoff_manifest(
         consumer_registry_manifest_path=consumer_registry_manifest_path,
         consumer_registry_summary=consumer_registry_summary,
         consumer=consumer,
+        matched_source_families=matched_source_families,
     )
     handoff_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -333,6 +344,16 @@ def validate_platform_signal_handoff_manifest(
         consumer_registry_manifest_path,
         require_all_known_consumers=require_all_known_consumers,
     )
+    matched_source_families = _matching_source_families(
+        source_catalog_manifest_path,
+        signal_bundle_summary=signal_bundle_summary,
+        consumer=target_consumer,
+    )
+    _validate_matching_source_families(
+        matched_source_families,
+        consumer=target_consumer,
+        transform=str(signal_bundle_summary["transform"]),
+    )
     expected_summary = _platform_handoff_summary(
         handoff_path=handoff_path,
         payload=payload,
@@ -343,6 +364,7 @@ def validate_platform_signal_handoff_manifest(
         consumer_registry_manifest_path=consumer_registry_manifest_path,
         consumer_registry_summary=consumer_registry_summary,
         consumer=target_consumer,
+        matched_source_families=matched_source_families,
     )
     _validate_summary_consistency(payload, expected_summary)
     return expected_summary
@@ -376,6 +398,8 @@ def _platform_handoff_index_entry(
         "as_of": summary["as_of"],
         "freshness_status": summary["freshness_status"],
         "source_families": list(summary["source_families"]),
+        "matched_source_families": list(summary["matched_source_families"]),
+        "matched_source_family_count": summary["matched_source_family_count"],
         "consumer_contracts": list(summary["consumer_contracts"]),
         "all_known_source_families_present": summary[
             "all_known_source_families_present"
@@ -425,6 +449,13 @@ def _validate_platform_handoff_index_shape(index: Mapping[str, Any]) -> None:
                 raise ValueError(
                     f"platform handoff index entry {field} must be a list"
                 )
+        if "matched_source_families" in raw_entry and not isinstance(
+            raw_entry.get("matched_source_families"),
+            list,
+        ):
+            raise ValueError(
+                "platform handoff index entry matched_source_families must be a list"
+            )
 
 
 def _resolve_platform_handoff_manifest_from_index(
@@ -521,6 +552,16 @@ def _validate_index_entry_summary_consistency(
                 f"platform handoff index {field} mismatch: "
                 f"{entry.get(field)!r} != {expected!r}"
             )
+    optional_expected_values = {
+        "matched_source_families": list(summary["matched_source_families"]),
+        "matched_source_family_count": summary["matched_source_family_count"],
+    }
+    for field, expected in optional_expected_values.items():
+        if field in entry and entry.get(field) != expected:
+            raise ValueError(
+                f"platform handoff index {field} mismatch: "
+                f"{entry.get(field)!r} != {expected!r}"
+            )
 
 
 def _index_entry_matches_consumer(
@@ -584,6 +625,7 @@ def _platform_handoff_manifest(
     consumer_registry_manifest_path: Path,
     consumer_registry_summary: Mapping[str, Any],
     consumer: str | None,
+    matched_source_families: tuple[str, ...],
 ) -> dict[str, Any]:
     return {
         "schema_version": MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION,
@@ -601,6 +643,8 @@ def _platform_handoff_manifest(
         "consumer_contract_registry_manifest_sha256": sha256_file(consumer_registry_manifest_path),
         "source_family_count": source_catalog_summary["family_count"],
         "source_families": list(source_catalog_summary["families"]),
+        "matched_source_family_count": len(matched_source_families),
+        "matched_source_families": list(matched_source_families),
         "all_known_source_families_present": source_catalog_summary[
             "all_known_families_present"
         ],
@@ -626,6 +670,7 @@ def _platform_handoff_summary(
     consumer_registry_manifest_path: Path,
     consumer_registry_summary: Mapping[str, Any],
     consumer: str | None,
+    matched_source_families: tuple[str, ...],
 ) -> dict[str, Any]:
     return {
         "path": str(handoff_path),
@@ -648,6 +693,8 @@ def _platform_handoff_summary(
         ),
         "source_family_count": source_catalog_summary["family_count"],
         "source_families": source_catalog_summary["families"],
+        "matched_source_family_count": len(matched_source_families),
+        "matched_source_families": matched_source_families,
         "all_known_source_families_present": source_catalog_summary[
             "all_known_families_present"
         ],
@@ -660,6 +707,118 @@ def _platform_handoff_summary(
             "all_known_consumers_present"
         ],
     }
+
+
+def _matching_source_families(
+    source_catalog_manifest_path: Path,
+    *,
+    signal_bundle_summary: Mapping[str, Any],
+    consumer: str | None,
+) -> tuple[str, ...]:
+    manifest = _read_json_mapping(
+        source_catalog_manifest_path,
+        label="source family catalog manifest",
+    )
+    catalog_path = _resolve_linked_manifest_path(
+        source_catalog_manifest_path.parent.resolve(),
+        str(manifest["catalog_path"]),
+        field="catalog_path",
+    )
+    catalog = _read_json_mapping(catalog_path, label="source family catalog")
+    families = catalog.get("families")
+    if not isinstance(families, list):
+        raise ValueError("source family catalog families must be a list")
+
+    transform = str(signal_bundle_summary["transform"]).strip()
+    freshness_policy = str(signal_bundle_summary["freshness_policy"]).strip()
+    bundle_symbols = {
+        str(symbol).strip()
+        for symbol in signal_bundle_summary.get("symbols", ()) or ()
+        if str(symbol).strip()
+    }
+    indicator_fields_by_symbol = signal_bundle_summary.get(
+        "indicator_fields_by_symbol",
+        {},
+    )
+    target_consumer = str(consumer or "").strip() or None
+
+    matched: list[str] = []
+    for record in families:
+        if not isinstance(record, Mapping):
+            raise ValueError("source family catalog records must be mappings")
+        if str(record.get("transform", "")).strip() != transform:
+            continue
+        if str(record.get("freshness_policy", "")).strip() != freshness_policy:
+            continue
+        compatible_profiles = {
+            str(profile).strip()
+            for profile in record.get("compatible_profiles", ()) or ()
+            if str(profile).strip()
+        }
+        if target_consumer is not None and target_consumer not in compatible_profiles:
+            continue
+        catalog_symbols = {
+            str(symbol).strip()
+            for symbol in record.get("symbols", ()) or ()
+            if str(symbol).strip()
+        }
+        if not bundle_symbols.issubset(catalog_symbols):
+            continue
+        catalog_fields = {
+            str(field).strip()
+            for field in record.get("derived_indicator_fields", ()) or ()
+            if str(field).strip()
+        }
+        if not _bundle_indicator_fields_supported(
+            indicator_fields_by_symbol,
+            symbols=bundle_symbols,
+            catalog_fields=catalog_fields,
+        ):
+            continue
+        family = str(record.get("family", "")).strip()
+        if family:
+            matched.append(family)
+    return tuple(sorted(matched))
+
+
+def _bundle_indicator_fields_supported(
+    indicator_fields_by_symbol: object,
+    *,
+    symbols: set[str],
+    catalog_fields: set[str],
+) -> bool:
+    if not isinstance(indicator_fields_by_symbol, Mapping):
+        return False
+    for symbol in symbols:
+        raw_fields = indicator_fields_by_symbol.get(symbol, ())
+        fields = {
+            str(field).strip()
+            for field in raw_fields or ()
+            if str(field).strip()
+        }
+        if not fields.issubset(catalog_fields):
+            return False
+    return True
+
+
+def _validate_matching_source_families(
+    matched_source_families: tuple[str, ...],
+    *,
+    consumer: str | None,
+    transform: str,
+) -> None:
+    if matched_source_families:
+        return
+    target_consumer = str(consumer or "").strip()
+    if target_consumer:
+        raise ValueError(
+            "platform handoff source catalog missing family for consumer and "
+            f"transform: {target_consumer}, {transform}"
+        )
+    raise ValueError(
+        "platform handoff source catalog missing family for transform: "
+        f"{transform}"
+    )
 
 
 def _validate_signal_bundle_manifest_for_handoff(
@@ -735,6 +894,11 @@ def _validate_platform_handoff_shape(payload: object) -> None:
     ):
         if not str(payload.get(field, "")).strip():
             raise ValueError(f"platform handoff missing field: {field}")
+    if "matched_source_families" in payload and not isinstance(
+        payload["matched_source_families"],
+        list,
+    ):
+        raise ValueError("platform handoff matched_source_families must be a list")
 
 
 def _validate_linked_sha256(path: Path, expected: str, *, field: str) -> None:
@@ -768,6 +932,15 @@ def _validate_summary_consistency(
     }
     for field, expected in expected_values.items():
         if payload.get(field) != expected:
+            raise ValueError(
+                f"platform handoff {field} mismatch: {payload.get(field)!r} != {expected!r}"
+            )
+    optional_expected_values = {
+        "matched_source_family_count": summary["matched_source_family_count"],
+        "matched_source_families": list(summary["matched_source_families"]),
+    }
+    for field, expected in optional_expected_values.items():
+        if field in payload and payload.get(field) != expected:
             raise ValueError(
                 f"platform handoff {field} mismatch: {payload.get(field)!r} != {expected!r}"
             )

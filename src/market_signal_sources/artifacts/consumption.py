@@ -146,6 +146,9 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
             "consumer_contract_registry_manifest_sha256",
         ),
         "source_families": tuple(audit_summary.get("source_families", ())),
+        "matched_source_families": tuple(
+            audit_summary.get("matched_source_families", ())
+        ),
         "consumer_contracts": tuple(audit_summary.get("consumer_contracts", ())),
     }
 
@@ -198,6 +201,8 @@ def _runtime_consumption_audit(
         ],
         "source_family_count": summary["source_family_count"],
         "source_families": summary["source_families"],
+        "matched_source_family_count": summary.get("matched_source_family_count", 0),
+        "matched_source_families": summary.get("matched_source_families", ()),
         "all_known_source_families_present": summary[
             "all_known_source_families_present"
         ],

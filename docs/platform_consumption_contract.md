@@ -83,7 +83,8 @@ Required platform checks:
 - source family catalog manifest SHA-256 matches the handoff
 - consumer contract registry manifest SHA-256 matches the handoff
 - bundle `compatible_profiles` includes the runtime consumer
-- catalog has a family matching the bundle transform and runtime consumer
+- catalog has a family matching the bundle transform, runtime consumer,
+  freshness policy, symbols, and emitted indicator fields
 - registry contains the runtime consumer and all required fields are present
 - freshness policy is acceptable for the strategy's evaluation lag
 
@@ -103,6 +104,8 @@ python -m market_signal_sources.cli.audit_signal_consumption \
 For runtime handoffs, the audit summary must show
 `ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
 expected `runtime_market_data_key`, such as `derived_indicators`.
+It also includes `matched_source_families`, which records the exact source
+family or families that matched the runtime bundle and consumer.
 When a platform only needs the injection mapping after validation, it can ask
 the same command for the minimal runtime plan:
 

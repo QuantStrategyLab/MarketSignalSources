@@ -1548,6 +1548,8 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
     ]
+    assert summary["matched_source_families"] == ("crypto.btc_cycle_daily",)
+    assert summary["matched_source_family_count"] == 1
     assert summary["consumer_contract_count"] == 8
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
@@ -1693,6 +1695,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert consumption_summary["ready_for_research_consumption"] is False
     assert consumption_summary["runtime_market_data_key"] == "derived_indicators"
     assert consumption_summary["runtime_payload_field"] == "derived_indicators"
+    assert consumption_summary["matched_source_families"] == (
+        "crypto.btc_cycle_daily",
+    )
+    assert consumption_summary["matched_source_family_count"] == 1
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["consumer_contract_verified"] is True
     injection_plan = runtime_signal_injection_plan(consumption_summary)
@@ -1761,6 +1767,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_injection_plan["market_data_key"] == "derived_indicators"
     assert cli_injection_plan["target_path"] == "market_data.derived_indicators"
     assert cli_injection_plan["consumer"] == "us_equity:ibit_smart_dca"
+    assert cli_injection_plan["matched_source_families"] == [
+        "crypto.btc_cycle_daily"
+    ]
 
     with pytest.raises(ValueError, match="consumer is required"):
         audit_signal_consumption(platform_handoff_manifest=handoff_path, consumer="")
@@ -1783,6 +1792,46 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             consumer="us_equity:ibit_smart_dca",
             require_all_known_families=True,
             require_all_known_consumers=True,
+        )
+
+
+def test_platform_signal_handoff_rejects_missing_matching_source_family(
+    tmp_path,
+) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "bundle" / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle_paths = write_signal_bundle_artifacts(
+        tmp_path / "bundle",
+        bundle,
+        quality_report_path=quality_report_path,
+    )
+    non_crypto_catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "source-catalog",
+        families=("us_equity.nasdaq_sp500_context_daily",),
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "contracts",
+    )
+
+    with pytest.raises(ValueError, match="missing family for consumer and transform"):
+        write_platform_signal_handoff_manifest(
+            tmp_path / "platform_handoff.json",
+            signal_bundle_manifest=bundle_paths["manifest"],
+            source_family_catalog_manifest=non_crypto_catalog_summary["manifest_path"],
+            consumer_contract_registry_manifest=contract_summary["manifest_path"],
+            consumer="us_equity:ibit_smart_dca",
         )
 
 
