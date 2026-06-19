@@ -32,6 +32,9 @@ MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SET_SCHEMA_VERSION = (
 MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SCHEMA_VERSION = (
     "market_signal_runtime_adapter_deployment.v1"
 )
+MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SET_SCHEMA_VERSION = (
+    "market_signal_runtime_adapter_deployment_set.v1"
+)
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
 _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
 _PLAN_AUDIT_MATCH_ARTIFACT_TYPE = "market_signal_runtime_plan_audit_match"
@@ -43,6 +46,9 @@ _ADAPTER_CONFIG_SET_VALIDATION_ARTIFACT_TYPE = (
 )
 _ADAPTER_DEPLOYMENT_VALIDATION_ARTIFACT_TYPE = (
     "market_signal_runtime_adapter_deployment_validation"
+)
+_ADAPTER_DEPLOYMENT_SET_VALIDATION_ARTIFACT_TYPE = (
+    "market_signal_runtime_adapter_deployment_set_validation"
 )
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
@@ -425,6 +431,54 @@ def validate_runtime_adapter_deployment_config_file(
             if plan_match_summary is not None
             else ""
         ),
+    }
+
+
+def validate_runtime_adapter_deployment_config_set_files(
+    paths: Iterable[str | PathLike[str]],
+    *,
+    require_all_known_runtime_consumers: bool = False,
+) -> dict[str, Any]:
+    """Validate runtime adapter deployment configs and consumer coverage."""
+
+    config_paths = tuple(Path(path) for path in paths)
+    if not config_paths:
+        raise ValueError(
+            "runtime adapter deployment config set requires at least one config"
+        )
+    summaries = tuple(
+        validate_runtime_adapter_deployment_config_file(config_path)
+        for config_path in config_paths
+    )
+    consumers = tuple(str(summary["consumer"]) for summary in summaries)
+    duplicates = sorted(
+        consumer for consumer in set(consumers) if consumers.count(consumer) > 1
+    )
+    if duplicates:
+        raise ValueError(
+            "runtime adapter deployment config set duplicate consumers: "
+            + ", ".join(duplicates)
+        )
+    known_runtime_consumers = _known_runtime_signal_consumers()
+    missing_known_runtime_consumers = sorted(
+        set(known_runtime_consumers) - set(consumers)
+    )
+    if require_all_known_runtime_consumers and missing_known_runtime_consumers:
+        raise ValueError(
+            "runtime adapter deployment config set missing known runtime consumers: "
+            + ", ".join(missing_known_runtime_consumers)
+        )
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SET_SCHEMA_VERSION,
+        "artifact_type": _ADAPTER_DEPLOYMENT_SET_VALIDATION_ARTIFACT_TYPE,
+        "valid": True,
+        "config_count": len(summaries),
+        "consumers": consumers,
+        "known_runtime_consumer_count": len(known_runtime_consumers),
+        "known_runtime_consumers": known_runtime_consumers,
+        "missing_known_runtime_consumers": tuple(missing_known_runtime_consumers),
+        "all_known_runtime_consumers_present": not missing_known_runtime_consumers,
+        "deployments": summaries,
     }
 
 

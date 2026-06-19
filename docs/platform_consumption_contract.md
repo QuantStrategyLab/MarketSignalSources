@@ -231,6 +231,11 @@ python -m market_signal_sources.cli.audit_signal_consumption \
 python -m market_signal_sources.cli.audit_signal_consumption \
   --validate-runtime-adapter-deployment-json ./deploy/ibit_smart_dca.signal_adapter.json \
   --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-adapter-deployment-set-json ./deploy/*.signal_adapter.json \
+  --require-all-known-consumers \
+  --pretty
 ```
 
 The config validation only checks the platform-owned config shape and invalid
@@ -241,7 +246,8 @@ consumer. The deployment validation also reads
 re-resolves the current handoff lookup and confirms the config consumer,
 handoff source, handoff path, selected audit identity, `as_of`, accepted
 freshness, saved audit identity, and runtime plan match before startup
-injection.
+injection. The deployment-set validation applies that full deployment check to
+each config and enforces set-level runtime consumer coverage.
 
 Required adapter config semantics:
 
@@ -263,6 +269,8 @@ Invalid combinations should fail before strategy evaluation:
 - multiple runtime adapter configs target the same `signal_consumer`
 - config-set validation is required to cover all known runtime consumers but a
   consumer is missing
+- deployment-set validation is required to cover all known runtime consumers but
+  a validated deployment is missing
 - configured handoff path does not match the saved consumption audit path
 - current handoff/index resolution no longer matches the saved consumption audit
 - `saved_runtime_plan_json` is used without a matching
