@@ -9,6 +9,7 @@ from typing import Any
 
 from .consumer_contracts import (
     SignalConsumerContractError,
+    known_signal_consumers,
     required_indicator_fields_for_consumer,
 )
 from .signal_bundle import CANONICAL_INPUT_DERIVED_INDICATORS
@@ -337,6 +338,13 @@ def compatible_profiles_for_signal_source_family(family: str) -> tuple[str, ...]
     return tuple(str(profile) for profile in record["compatible_profiles"])
 
 
+def runtime_consumers_for_signal_source_family(family: str) -> tuple[str, ...]:
+    """Return runtime consumers for a known signal source family."""
+
+    record = signal_source_family_record(family)
+    return tuple(str(consumer) for consumer in record.get("runtime_consumers", ()))
+
+
 def implemented_signal_source_families_for_domain(domain: str) -> tuple[str, ...]:
     """Return implemented source families for a known market domain."""
 
@@ -362,6 +370,17 @@ def signal_source_family_consumer_contract_coverage(family: str) -> dict[str, An
     """Return consumer-contract coverage metadata for a known source family."""
 
     return _consumer_contract_coverage_summary(signal_source_family_record(family))
+
+
+def signal_source_runtime_consumer_coverage() -> dict[str, Any]:
+    """Return runtime consumer coverage across all known source families."""
+
+    return _runtime_consumer_coverage_summary(
+        tuple(
+            signal_source_family_record(family)
+            for family in known_signal_source_families()
+        )
+    )
 
 
 def signal_source_domain_coverage_payload() -> dict[str, Any]:
@@ -484,6 +503,7 @@ def validate_signal_source_family_catalog(
     family_names: list[str] = []
     coverage_by_family: dict[str, Any] = {}
     source_profiles_by_family: dict[str, Any] = {}
+    records: list[Mapping[str, Any]] = []
     for record in families:
         if not isinstance(record, dict):
             raise ValueError("signal source family catalog records must be objects")
@@ -500,6 +520,7 @@ def validate_signal_source_family_catalog(
             expected_record,
         ):
             raise ValueError(f"signal source family record drift: {family}")
+        records.append(record)
         coverage_by_family[family] = _consumer_contract_coverage_summary(record)
         source_profiles_by_family[family] = _source_profile_summary(record)
 
@@ -512,6 +533,7 @@ def validate_signal_source_family_catalog(
             "missing known signal source families: "
             + ", ".join(missing_known_families)
         )
+    runtime_consumer_coverage = _runtime_consumer_coverage_summary(records)
 
     return {
         "schema_version": payload["schema_version"],
@@ -526,6 +548,10 @@ def validate_signal_source_family_catalog(
             bool(summary["all_required_fields_present"])
             for summary in coverage_by_family.values()
         ),
+        "runtime_consumer_coverage": runtime_consumer_coverage,
+        "all_runtime_consumers_covered": runtime_consumer_coverage[
+            "all_runtime_consumers_covered"
+        ],
         "source_profile_count": sum(
             int(summary["source_profile_count"])
             for summary in source_profiles_by_family.values()
@@ -645,6 +671,9 @@ def _source_catalog_manifest(
         "all_consumer_contracts_satisfied": catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
+        "all_runtime_consumers_covered": catalog_summary[
+            "all_runtime_consumers_covered"
+        ],
     }
 
 
@@ -677,6 +706,9 @@ def _source_catalog_manifest_summary(
         "planned_family_count": catalog_summary["planned_family_count"],
         "all_consumer_contracts_satisfied": catalog_summary[
             "all_consumer_contracts_satisfied"
+        ],
+        "all_runtime_consumers_covered": catalog_summary[
+            "all_runtime_consumers_covered"
         ],
         "source_profile_count": catalog_summary["source_profile_count"],
     }
@@ -735,6 +767,13 @@ def _validate_source_catalog_manifest_shape(manifest: object) -> None:
         raise ValueError(
             "signal source family catalog manifest all_consumer_contracts_satisfied must be a bool"
         )
+    if (
+        "all_runtime_consumers_covered" in manifest
+        and not isinstance(manifest["all_runtime_consumers_covered"], bool)
+    ):
+        raise ValueError(
+            "signal source family catalog manifest all_runtime_consumers_covered must be a bool"
+        )
 
 
 def _resolve_manifest_catalog_path(manifest_path: Path, value: str) -> Path:
@@ -775,6 +814,10 @@ def _validate_source_catalog_manifest_consistency(
     }
     if "source_profile_count" in manifest:
         expected_values["source_profile_count"] = catalog_summary["source_profile_count"]
+    if "all_runtime_consumers_covered" in manifest:
+        expected_values["all_runtime_consumers_covered"] = catalog_summary[
+            "all_runtime_consumers_covered"
+        ]
     for field, expected in expected_values.items():
         if manifest[field] != expected:
             raise ValueError(
@@ -948,6 +991,92 @@ def _consumer_contract_coverage_summary(record: Mapping[str, Any]) -> dict[str, 
         "symbols": symbols,
         "required_indicator_fields_by_consumer": required_by_consumer,
         "all_required_fields_present": True,
+    }
+
+
+def _runtime_consumer_coverage_summary(
+    records: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    known_runtime_consumers = tuple(
+        consumer
+        for consumer in known_signal_consumers()
+        if not consumer.startswith("research:")
+    )
+    source_families_by_consumer: dict[str, list[str]] = {
+        consumer: []
+        for consumer in known_runtime_consumers
+    }
+    runtime_consumers_seen: set[str] = set()
+    unknown_runtime_consumers: set[str] = set()
+    consumer_scope_errors: list[str] = []
+
+    for record in records:
+        family = str(record.get("family", "")).strip()
+        compatible_profiles = set(
+            _normalized_sequence(
+                record.get("compatible_profiles"),
+                field="compatible_profiles",
+                family=family,
+            )
+        )
+        runtime_consumers = set(
+            _normalized_sequence(
+                record.get("runtime_consumers"),
+                field="runtime_consumers",
+                family=family,
+                allow_empty=True,
+            )
+        )
+        research_consumers = set(
+            _normalized_sequence(
+                record.get("research_consumers"),
+                field="research_consumers",
+                family=family,
+                allow_empty=True,
+            )
+        )
+        declared_consumers = runtime_consumers | research_consumers
+        if declared_consumers != compatible_profiles:
+            consumer_scope_errors.append(f"{family}:consumer_scope_mismatch")
+        if runtime_consumers & research_consumers:
+            consumer_scope_errors.append(f"{family}:runtime_research_consumer_overlap")
+
+        for consumer in runtime_consumers:
+            if consumer.startswith("research:"):
+                consumer_scope_errors.append(f"{family}:research_consumer_marked_runtime")
+                continue
+            runtime_consumers_seen.add(consumer)
+            if consumer in source_families_by_consumer:
+                source_families_by_consumer[consumer].append(family)
+            else:
+                unknown_runtime_consumers.add(consumer)
+
+        for consumer in research_consumers:
+            if not consumer.startswith("research:"):
+                consumer_scope_errors.append(f"{family}:runtime_consumer_marked_research")
+
+    missing_runtime_consumers = tuple(
+        consumer
+        for consumer, families in source_families_by_consumer.items()
+        if not families
+    )
+    return {
+        "known_runtime_consumers": known_runtime_consumers,
+        "known_runtime_consumer_count": len(known_runtime_consumers),
+        "runtime_consumers": tuple(sorted(runtime_consumers_seen)),
+        "runtime_consumer_count": len(runtime_consumers_seen),
+        "runtime_consumer_source_families": {
+            consumer: tuple(families)
+            for consumer, families in sorted(source_families_by_consumer.items())
+        },
+        "runtime_consumers_without_source_family": missing_runtime_consumers,
+        "unknown_runtime_consumers": tuple(sorted(unknown_runtime_consumers)),
+        "consumer_scope_errors": tuple(consumer_scope_errors),
+        "all_runtime_consumers_covered": (
+            not missing_runtime_consumers
+            and not unknown_runtime_consumers
+            and not consumer_scope_errors
+        ),
     }
 
 

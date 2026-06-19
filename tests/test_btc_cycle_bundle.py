@@ -20,10 +20,12 @@ from market_signal_sources.artifacts.source_catalog import (
     compatible_profiles_for_signal_source_family,
     implemented_signal_source_families_for_domain,
     known_signal_source_families,
+    runtime_consumers_for_signal_source_family,
     signal_source_domain_coverage_payload,
     signal_source_family_consumer_contract_coverage,
     signal_source_family_catalog_payload,
     signal_source_family_record,
+    signal_source_runtime_consumer_coverage,
     source_profiles_for_signal_source_family,
     validate_signal_source_family_catalog,
     validate_signal_source_family_catalog_file,
@@ -463,6 +465,18 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert compatible_profiles_for_signal_source_family(
         "crypto.btc_cycle_daily"
     ) == tuple(bundle["consumer_contract"]["compatible_profiles"])
+    assert runtime_consumers_for_signal_source_family("crypto.btc_cycle_daily") == (
+        "us_equity:ibit_smart_dca",
+    )
+    assert runtime_consumers_for_signal_source_family(
+        "us_equity.nasdaq_sp500_context_daily"
+    ) == ()
+    runtime_coverage = signal_source_runtime_consumer_coverage()
+    assert runtime_coverage["all_runtime_consumers_covered"] is True
+    assert runtime_coverage["known_runtime_consumers"] == ("us_equity:ibit_smart_dca",)
+    assert runtime_coverage["runtime_consumer_source_families"] == {
+        "us_equity:ibit_smart_dca": ("crypto.btc_cycle_daily",)
+    }
     coverage = signal_source_family_consumer_contract_coverage(
         "crypto.btc_cycle_daily"
     )
@@ -645,6 +659,12 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     assert validation_summary["planned_family_count"] == 7
     assert validation_summary["source_profile_count"] == 8
     assert validation_summary["all_consumer_contracts_satisfied"] is True
+    assert validation_summary["all_runtime_consumers_covered"] is True
+    assert validation_summary["runtime_consumer_coverage"][
+        "runtime_consumer_source_families"
+    ] == {
+        "us_equity:ibit_smart_dca": ["crypto.btc_cycle_daily"],
+    }
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
     ]["consumer_count"] == 5

@@ -230,6 +230,11 @@ publish. Planned entries in `domain_coverage` are intentionally not included in
 `known_signal_source_families()` and do not satisfy
 `--require-all-known-families`; they become runtime-compatible only after a real
 family record, consumer contract, artifact writer, and validation test exist.
+Catalog validation also reports `runtime_consumer_coverage`. That summary maps
+each known non-research consumer, such as `us_equity:ibit_smart_dca`, back to
+the source families that can publish runtime handoffs for it. A new runtime
+consumer should not be considered deployable until this coverage reports
+`all_runtime_consumers_covered=true`.
 
 The first US equity family is `us_equity.nasdaq_sp500_context_daily`. It uses the
 same `derived_indicators` envelope as BTC cycle signals, with the stable symbol

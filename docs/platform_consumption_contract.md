@@ -428,6 +428,10 @@ Strategy repositories should run their own handoff validators too, because they
 own the expected consumer id, expected transform, and candidate-set field needs.
 The `audit_signal_consumption()` function is the low-level facade behind the CLI
 for consumers that prefer a Python API over a subprocess.
+The source-family catalog validation also returns
+`runtime_consumer_coverage`; platform deploy checks should require
+`all_runtime_consumers_covered=true` before treating adapter config-set coverage
+as complete.
 
 ## Compatibility And Risk
 
