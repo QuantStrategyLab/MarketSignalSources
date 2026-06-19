@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
+audit-signal-consumption = "market_signal_sources.cli.audit_signal_consumption:main"
 build-btc-cycle-bundle = "market_signal_sources.cli.build_btc_cycle_bundle:main"
 build-research-handoff = "market_signal_sources.cli.build_research_handoff:main"
 export-btc-cycle-research-csv = "market_signal_sources.cli.export_btc_cycle_research_csv:main"

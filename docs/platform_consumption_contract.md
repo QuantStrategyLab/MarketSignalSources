@@ -87,6 +87,23 @@ Required platform checks:
 - registry contains the runtime consumer and all required fields are present
 - freshness policy is acceptable for the strategy's evaluation lag
 
+The unified consumption audit command runs those checks through the same
+validator path and returns a `market_signal_consumption_audit.v1` summary:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --platform-handoff-index ./data/output/platform_handoffs/index.json \
+  --consumer us_equity:ibit_smart_dca \
+  --as-of 2026-06-19 \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+```
+
+For runtime handoffs, the audit summary must show
+`ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
+expected `runtime_market_data_key`, such as `derived_indicators`.
+
 ## Research Flow
 
 1. Export a `research_export.v1` CSV and manifest from the relevant source
@@ -103,6 +120,16 @@ Research consumers should be explicit. If a candidate set is compatible with
 multiple `research:` consumers, the backtest command should select one
 explicitly so a helper-field experiment does not silently validate against a
 weaker AHR999-only contract.
+
+The same audit CLI validates research handoffs, but its summary intentionally
+keeps `ready_for_runtime_injection=false`:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --research-handoff-manifest ./data/output/research_handoff.json \
+  --consumer research:ibit_btc_ahr999_mayer_precomputed \
+  --pretty
+```
 
 Research promotion rule:
 
@@ -179,6 +206,8 @@ python -m market_signal_sources.cli.build_research_handoff \
 
 Strategy repositories should run their own handoff validators too, because they
 own the expected consumer id, expected transform, and candidate-set field needs.
+The `audit_signal_consumption()` function is the low-level facade behind the CLI
+for consumers that prefer a Python API over a subprocess.
 
 ## Compatibility And Risk
 

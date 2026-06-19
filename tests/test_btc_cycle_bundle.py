@@ -45,6 +45,7 @@ from market_signal_sources.artifacts.consumer_contracts import (
     write_consumer_contract_registry,
     write_consumer_contract_registry_artifacts,
 )
+from market_signal_sources.artifacts.consumption import audit_signal_consumption
 from market_signal_sources.artifacts.platform_handoff import (
     resolve_platform_signal_handoff_manifest_from_index,
     upsert_platform_signal_handoff_index,
@@ -73,6 +74,9 @@ from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.build_platform_handoff import main as handoff_main
 from market_signal_sources.cli.build_research_handoff import (
     main as research_handoff_main,
+)
+from market_signal_sources.cli.audit_signal_consumption import (
+    main as audit_consumption_main,
 )
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.export_us_equity_context_research_csv import (
@@ -1634,6 +1638,60 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         handoff_path
     )
 
+    consumption_summary = audit_signal_consumption(
+        platform_handoff_manifest=handoff_path,
+        consumer="us_equity:ibit_smart_dca",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+    )
+    assert consumption_summary["schema_version"] == (
+        "market_signal_consumption_audit.v1"
+    )
+    assert consumption_summary["artifact_type"] == "market_signal_consumption_audit"
+    assert consumption_summary["consumption_mode"] == "runtime_platform"
+    assert consumption_summary["handoff_source"] == "platform_handoff_manifest"
+    assert consumption_summary["ready_for_runtime_injection"] is True
+    assert consumption_summary["ready_for_research_consumption"] is False
+    assert consumption_summary["runtime_market_data_key"] == "derived_indicators"
+    assert consumption_summary["runtime_payload_field"] == "derived_indicators"
+    assert consumption_summary["linked_manifest_sha256s_verified"] is True
+    assert consumption_summary["consumer_contract_verified"] is True
+
+    index_consumption_summary = audit_signal_consumption(
+        platform_handoff_index=cli_index_path,
+        consumer="us_equity:ibit_smart_dca",
+        as_of="2025-09-18",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+    )
+    assert index_consumption_summary["handoff_source"] == "platform_handoff_index"
+    assert index_consumption_summary["index_handoff_count"] == 1
+    assert index_consumption_summary["handoff_manifest_sha256"] == _sha256(
+        handoff_path
+    )
+
+    audit_result = audit_consumption_main(
+        [
+            "--platform-handoff-index",
+            str(cli_index_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--as-of",
+            "2025-09-18",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--pretty",
+        ]
+    )
+    assert audit_result == 0
+    cli_consumption_summary = json.loads(capsys.readouterr().out)
+    assert cli_consumption_summary["consumption_mode"] == "runtime_platform"
+    assert cli_consumption_summary["runtime_injection_allowed"] is True
+    assert cli_consumption_summary["consumer"] == "us_equity:ibit_smart_dca"
+
+    with pytest.raises(ValueError, match="consumer is required"):
+        audit_signal_consumption(platform_handoff_manifest=handoff_path, consumer="")
+
     bad_index = json.loads(cli_index_path.read_text(encoding="utf-8"))
     bad_index["handoffs"][0]["handoff_manifest_sha256"] = "0" * 64
     cli_index_path.write_text(json.dumps(bad_index), encoding="utf-8")
@@ -1775,6 +1833,42 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     assert validate_result == 0
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["sha256"] == _sha256(cli_handoff_path)
+
+    consumption_summary = audit_signal_consumption(
+        research_handoff_manifest=handoff_path,
+        consumer="research:nasdaq_sp500_cape_vix_external_context_precomputed",
+    )
+    assert consumption_summary["schema_version"] == (
+        "market_signal_consumption_audit.v1"
+    )
+    assert consumption_summary["artifact_type"] == "market_signal_consumption_audit"
+    assert consumption_summary["consumption_mode"] == "offline_research"
+    assert consumption_summary["handoff_source"] == "research_handoff_manifest"
+    assert consumption_summary["ready_for_research_consumption"] is True
+    assert consumption_summary["ready_for_runtime_injection"] is False
+    assert consumption_summary["runtime_injection_allowed"] is False
+    assert consumption_summary["research_transform"] == (
+        "us_equity.nasdaq_sp500.context.v1"
+    )
+    assert consumption_summary["linked_manifest_sha256s_verified"] is True
+    assert consumption_summary["summary_verified"] is True
+
+    audit_result = audit_consumption_main(
+        [
+            "--research-handoff-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--pretty",
+        ]
+    )
+    assert audit_result == 0
+    cli_consumption_summary = json.loads(capsys.readouterr().out)
+    assert cli_consumption_summary["consumption_mode"] == "offline_research"
+    assert cli_consumption_summary["runtime_injection_allowed"] is False
+    assert cli_consumption_summary["consumer"] == (
+        "research:nasdaq_sp500_cape_vix_external_context_precomputed"
+    )
 
     wrong_consumer_result = research_handoff_main(
         [

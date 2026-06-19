@@ -247,6 +247,20 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --pretty
 ```
 
+For a single platform-facing consumption audit, use the unified audit command.
+It validates the handoff/index for the explicit consumer and returns a
+`market_signal_consumption_audit.v1` summary with the runtime injection key:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --platform-handoff-index ./data/output/platform_handoffs/index.json \
+  --consumer us_equity:ibit_smart_dca \
+  --as-of 2026-06-19 \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+```
+
 For platform lookup across dated handoffs, publish a handoff index and validate
 it by consumer and `as_of`:
 
@@ -289,6 +303,15 @@ python -m market_signal_sources.cli.build_research_handoff \
 The research handoff validates the linked research CSV manifest and verifies
 that the source catalog contains a family with the export transform and target
 research consumer, while the registry contains the same consumer contract.
+The unified audit command can validate the same research handoff and marks it as
+research-only, not runtime-injectable:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --research-handoff-manifest ./data/output/research_handoff.json \
+  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
+  --pretty
+```
 
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
