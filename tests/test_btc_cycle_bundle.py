@@ -468,6 +468,29 @@ def test_signal_bundle_consumer_contract_rejects_missing_required_field(tmp_path
         )
 
 
+def test_signal_bundle_consumer_contract_rejects_incompatible_profile(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle["consumer_contract"]["compatible_profiles"] = ["us_equity:ibit_smart_dca"]
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+
+    with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
+        validate_signal_bundle_for_consumer(
+            bundle,
+            consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+        )
+
+    with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
+        validate_signal_bundle_manifest_for_consumer(
+            paths["manifest"],
+            consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+        )
+
+
 def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_path) -> None:
     bundle = build_btc_cycle_signal_bundle(
         _btc_frame(),
@@ -495,6 +518,10 @@ def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_pa
     ) == {"BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")}
     assert manifest_summary["bundle_sha256"] == _sha256(paths["signal_bundle"])
     assert direct_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    assert direct_summary["consumer_profile_compatible"] is True
+    assert "research:ibit_btc_ahr999_mayer_precomputed_variants" in direct_summary[
+        "compatible_profiles"
+    ]
 
 
 def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:

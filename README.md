@@ -77,8 +77,10 @@ python -m market_signal_sources.cli.validate_signal_bundle \
   --pretty
 ```
 
-The optional `--consumer` check validates downstream field coverage before
-publishing. For `research:ibit_btc_ahr999_mayer_precomputed_variants`, the
+The optional `--consumer` check validates both bundle profile compatibility and
+downstream field coverage before publishing. For
+`research:ibit_btc_ahr999_mayer_precomputed_variants`, the bundle's
+`consumer_contract.compatible_profiles` must include that consumer and the
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
 
 Consumer field requirements are also exposed as a JSON registry so platform and

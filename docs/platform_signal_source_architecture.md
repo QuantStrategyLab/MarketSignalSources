@@ -60,7 +60,8 @@ StrategyContext(
 The strategy platform remains responsible for account state, scheduling,
 retrying failed orders, broker constraints, and order submission. The signal
 source layer remains responsible for source data provenance, deterministic
-indicator calculation, freshness, and consumer field coverage.
+indicator calculation, freshness, bundle `compatible_profiles`, and consumer
+field coverage.
 
 This is lower risk than adding a live signal service now because the existing
 platforms can consume files in CI and runtime without new network dependencies,
@@ -75,7 +76,9 @@ credential paths, or service lifecycle ownership.
 3. Validate `quality_report.json` directly, then validate its hash through
    `manifest.json`. Manifest validation also checks that the quality report's
    input CSV hash matches the bundle provenance raw artifact hash.
-4. Validate the manifest or index with the target consumer identifier.
+4. Validate the manifest or index with the target consumer identifier. This
+   checks both `consumer_contract.compatible_profiles` membership and required
+   indicator field coverage.
 5. Publish the consumer contract registry with its manifest.
 6. Strategy CI validates both the signal manifest and the consumer contract
    registry before allowing a strategy config to reference the artifact.

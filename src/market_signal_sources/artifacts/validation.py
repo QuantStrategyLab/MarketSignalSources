@@ -242,6 +242,7 @@ def validate_signal_bundle_for_consumer(
         expected_canonical_input=expected_canonical_input,
         accepted_freshness_statuses=accepted_freshness_statuses,
     )
+    _validate_consumer_profile_compatibility(bundle, consumer=consumer)
 
 
 def signal_bundle_consumer_audit_summary(
@@ -263,6 +264,8 @@ def signal_bundle_consumer_audit_summary(
     summary.update(
         {
             "consumer": str(consumer),
+            "compatible_profiles": _compatible_profiles(bundle),
+            "consumer_profile_compatible": True,
             "required_indicator_fields_by_symbol": required_indicator_fields_for_consumer(
                 consumer
             ),
@@ -303,6 +306,8 @@ def validate_signal_bundle_manifest_for_consumer(
     summary.update(
         {
             "consumer": str(consumer),
+            "compatible_profiles": _compatible_profiles(bundle),
+            "consumer_profile_compatible": True,
             "required_indicator_fields_by_symbol": required_indicator_fields_for_consumer(
                 consumer
             ),
@@ -896,6 +901,43 @@ def _canonical_input(bundle: Mapping[str, Any]) -> str:
             "consumer_contract.canonical_input must be a non-empty string"
         )
     return canonical_input.strip()
+
+
+def _compatible_profiles(bundle: Mapping[str, Any]) -> tuple[str, ...]:
+    consumer_contract = bundle.get("consumer_contract")
+    if not isinstance(consumer_contract, Mapping):
+        raise SignalBundleValidationError("consumer_contract must be a mapping")
+    profiles = consumer_contract.get("compatible_profiles")
+    if isinstance(profiles, (str, bytes)) or not isinstance(profiles, Sequence):
+        raise SignalBundleValidationError(
+            "consumer_contract.compatible_profiles must be a non-empty sequence"
+        )
+    normalized: list[str] = []
+    for profile in profiles:
+        if not isinstance(profile, str) or not profile.strip():
+            raise SignalBundleValidationError(
+                "consumer_contract.compatible_profiles items must be non-empty strings"
+            )
+        normalized.append(profile.strip())
+    if not normalized:
+        raise SignalBundleValidationError(
+            "consumer_contract.compatible_profiles must include at least one profile"
+        )
+    return tuple(normalized)
+
+
+def _validate_consumer_profile_compatibility(
+    bundle: Mapping[str, Any],
+    *,
+    consumer: str,
+) -> None:
+    normalized_consumer = str(consumer or "").strip()
+    compatible_profiles = _compatible_profiles(bundle)
+    if normalized_consumer not in compatible_profiles:
+        raise SignalBundleValidationError(
+            "consumer_contract.compatible_profiles does not include consumer: "
+            f"{normalized_consumer!r}"
+        )
 
 
 def _validate_freshness(
