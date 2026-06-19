@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from collections.abc import Iterable, Mapping, Sequence
 import json
 from os import PathLike
@@ -373,6 +374,7 @@ def validate_research_export_manifest(
     )
     _validate_manifest_file_record(input_record, input_path, field="input_csv")
     _validate_manifest_file_record(output_record, output_path, field="output_csv")
+    _validate_research_export_output_csv_shape(manifest, output_path)
 
     return {
         "manifest_path": str(manifest_path.resolve()),
@@ -388,8 +390,10 @@ def validate_research_export_manifest(
         "columns": tuple(str(column) for column in manifest["columns"]),
         "input_csv_path": str(input_path),
         "input_csv_sha256": str(input_record["sha256"]).strip().lower(),
+        "input_csv_size_bytes": int(input_record["size_bytes"]),
         "output_csv_path": str(output_path),
         "output_csv_sha256": str(output_record["sha256"]).strip().lower(),
+        "output_csv_size_bytes": int(output_record["size_bytes"]),
     }
 
 
@@ -725,6 +729,64 @@ def _validate_manifest_file_record(
         raise SignalBundleValidationError(
             f"research export {field}.size_bytes mismatch: "
             f"expected {expected_size_bytes}, got {actual_size_bytes}"
+        )
+
+
+def _validate_research_export_output_csv_shape(
+    manifest: Mapping[str, Any],
+    output_path: Path,
+) -> None:
+    with output_path.open(newline="", encoding="utf-8") as file_obj:
+        reader = csv.reader(file_obj)
+        try:
+            header = tuple(next(reader))
+        except StopIteration as exc:
+            raise SignalBundleValidationError(
+                "research export output_csv is empty"
+            ) from exc
+
+        manifest_columns = tuple(str(column) for column in manifest["columns"])
+        if header != manifest_columns:
+            raise SignalBundleValidationError(
+                "research export output_csv columns mismatch: "
+                f"expected {manifest_columns}, got {header}"
+            )
+
+        actual_row_count = 0
+        actual_first_date = ""
+        actual_last_date = ""
+        date_index = header.index("date") if "date" in header else None
+        for row in reader:
+            actual_row_count += 1
+            if date_index is None:
+                continue
+            if date_index >= len(row):
+                raise SignalBundleValidationError(
+                    "research export output_csv row missing date column value"
+                )
+            if not actual_first_date:
+                actual_first_date = str(row[date_index])
+            actual_last_date = str(row[date_index])
+
+    expected_row_count = int(manifest["row_count"])
+    if actual_row_count != expected_row_count:
+        raise SignalBundleValidationError(
+            "research export output_csv row_count mismatch: "
+            f"expected {expected_row_count}, got {actual_row_count}"
+        )
+    if "date" not in header:
+        return
+    expected_first_date = str(manifest.get("first_date", ""))
+    expected_last_date = str(manifest.get("last_date", ""))
+    if actual_first_date != expected_first_date:
+        raise SignalBundleValidationError(
+            "research export output_csv first_date mismatch: "
+            f"expected {expected_first_date!r}, got {actual_first_date!r}"
+        )
+    if actual_last_date != expected_last_date:
+        raise SignalBundleValidationError(
+            "research export output_csv last_date mismatch: "
+            f"expected {expected_last_date!r}, got {actual_last_date!r}"
         )
 
 

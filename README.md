@@ -156,6 +156,10 @@ python -m market_signal_sources.cli.validate_research_export \
   --pretty
 ```
 
+Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
+and confirms the output CSV header, row count, first date, and last date match
+the manifest.
+
 Downstream platforms should validate the manifest and bundle hashes, freshness, provenance, and canonical input before injecting:
 
 ```python

@@ -647,6 +647,7 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     )
     assert validation_summary["row_count"] == 5
     assert validation_summary["output_csv_sha256"] == _sha256(output_csv)
+    assert validation_summary["output_csv_size_bytes"] == output_csv.stat().st_size
 
     validate_result = validate_research_main(
         [
@@ -684,6 +685,47 @@ def test_research_export_validator_rejects_checksum_mismatch(tmp_path) -> None:
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(SignalBundleValidationError, match="output_csv.sha256 mismatch"):
+        validate_research_export_manifest(manifest_path)
+
+
+def test_research_export_validator_rejects_output_csv_shape_drift(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    output_csv = tmp_path / "research" / "btc_cycle.csv"
+    manifest_path = tmp_path / "research" / "btc_cycle.manifest.json"
+    _btc_frame(205).to_csv(input_csv, index=False)
+    assert export_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-07-23",
+        ]
+    ) == 0
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["columns"] = ["date", "close"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="columns mismatch"):
+        validate_research_export_manifest(manifest_path)
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["columns"] = list(pd.read_csv(output_csv, nrows=0).columns)
+    manifest["row_count"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="row_count mismatch"):
+        validate_research_export_manifest(manifest_path)
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["row_count"] = 5
+    manifest["first_date"] = "1900-01-01"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="first_date mismatch"):
         validate_research_export_manifest(manifest_path)
 
 
