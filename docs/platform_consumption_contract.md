@@ -263,9 +263,10 @@ consumer. The deployment validation also reads
 `saved_consumption_audit_json` and, when present, `saved_runtime_plan_json`; it
 re-resolves the current handoff lookup and confirms the config consumer,
 handoff source, handoff path, selected audit identity, `as_of`, accepted
-freshness, saved audit identity, `all_runtime_consumers_covered`, and runtime
-plan match before startup injection. The deployment-set validation applies that
-full deployment check to each config and enforces set-level runtime consumer
+freshness, saved audit identity, source-family completeness,
+consumer-registry completeness, runtime consumer coverage, and runtime plan
+match before startup injection. The deployment-set validation applies that full
+deployment check to each config and enforces set-level runtime consumer
 coverage.
 
 Required adapter config semantics:

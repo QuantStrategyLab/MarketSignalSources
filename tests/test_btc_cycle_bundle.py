@@ -2269,6 +2269,40 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert coverage_drifted_deployment_result == 2
     assert "all_runtime_consumers_covered" in capsys.readouterr().err
+    registry_drifted_audit = json.loads(
+        cli_audit_artifact_path.read_text(encoding="utf-8")
+    )
+    registry_drifted_audit["all_known_consumers_present"] = False
+    registry_drifted_audit_artifact_path = (
+        tmp_path / "registry_drifted_consumption_audit.json"
+    )
+    registry_drifted_audit_artifact_path.write_text(
+        json.dumps(registry_drifted_audit, sort_keys=True),
+        encoding="utf-8",
+    )
+    registry_drifted_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "saved_consumption_audit_json": str(registry_drifted_audit_artifact_path),
+    }
+    registry_drifted_runtime_adapter_config_path = (
+        tmp_path / "registry_drifted_runtime_adapter_config.json"
+    )
+    registry_drifted_runtime_adapter_config_path.write_text(
+        json.dumps(registry_drifted_runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="all_known_consumers_present"):
+        validate_runtime_adapter_deployment_config_file(
+            registry_drifted_runtime_adapter_config_path
+        )
+    registry_drifted_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(registry_drifted_runtime_adapter_config_path),
+        ]
+    )
+    assert registry_drifted_deployment_result == 2
+    assert "all_known_consumers_present" in capsys.readouterr().err
     lookup_drifted_audit = json.loads(
         cli_audit_artifact_path.read_text(encoding="utf-8")
     )

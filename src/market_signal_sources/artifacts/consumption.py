@@ -79,8 +79,12 @@ _RUNTIME_AUDIT_IDENTITY_FIELDS = (
     "local_registry_payload_sha256",
     "local_contract_registry_verified",
     "source_families",
+    "matched_source_family_count",
     "matched_source_families",
+    "all_known_source_families_present",
+    "all_consumer_contracts_satisfied",
     "consumer_contracts",
+    "all_known_consumers_present",
     "all_runtime_consumers_covered",
 )
 
