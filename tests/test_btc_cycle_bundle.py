@@ -10,6 +10,7 @@ import pytest
 
 from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
+    build_daily_technical_signal_bundle,
     build_derived_indicator_signal_bundle,
     upsert_signal_bundle_publication_index,
     write_signal_bundle_artifacts,
@@ -114,6 +115,10 @@ from market_signal_sources.derived.crypto.btc_cycle import (
     build_btc_cycle_indicator_frame,
     compute_btc_cycle_indicators,
 )
+from market_signal_sources.derived.technical_indicators import (
+    build_daily_technical_indicator_frame,
+    compute_daily_technical_indicators,
+)
 from market_signal_sources.providers import local_csv_provider_metadata
 
 
@@ -127,6 +132,21 @@ def _btc_frame(rows: int = 260) -> pd.DataFrame:
             "low": [250_000.0 for _ in dates],
             "close": [250_000.0 for _ in dates],
             "volume": [10.0 for _ in dates],
+        }
+    )
+
+
+def _technical_frame(rows: int = 270) -> pd.DataFrame:
+    dates = pd.date_range("2025-01-01", periods=rows, freq="D")
+    closes = [100.0 + index * 0.2 for index in range(rows)]
+    return pd.DataFrame(
+        {
+            "date": dates.date,
+            "open": closes,
+            "high": [value * 1.01 for value in closes],
+            "low": [value * 0.99 for value in closes],
+            "close": closes,
+            "volume": [1000.0 for _ in dates],
         }
     )
 
@@ -320,6 +340,73 @@ def test_build_btc_cycle_indicator_frame_exports_daily_research_rows() -> None:
     assert frame.iloc[-1]["momentum_90d"] == 0.0
 
 
+def test_daily_technical_indicators_cover_runtime_contract_fields() -> None:
+    indicators = compute_daily_technical_indicators(
+        _technical_frame(),
+        as_of="2025-09-17",
+    )
+    frame = build_daily_technical_indicator_frame(
+        _technical_frame(),
+        as_of="2025-09-17",
+    )
+
+    assert indicators["close"] == pytest.approx(151.8)
+    assert indicators["sma50"] is not None
+    assert indicators["sma200"] is not None
+    assert indicators["high252"] is not None
+    assert indicators["drawdown_252d"] == pytest.approx(1.0 - 1.0 / 1.01)
+    assert indicators["sma200_gap"] > 0.0
+    assert indicators["rsi14"] == 100.0
+    assert "trend_score" in indicators
+    assert list(frame.columns)[1:] == [
+        "close",
+        "sma20",
+        "sma50",
+        "sma100",
+        "sma200",
+        "ema20",
+        "ema50",
+        "high252",
+        "drawdown_252d",
+        "sma200_gap",
+        "rsi14",
+        "atr14",
+        "realized_volatility_20d",
+        "realized_volatility_63d",
+        "momentum_90d",
+        "trend_score",
+    ]
+
+
+def test_daily_technical_signal_bundle_validates_for_nasdaq_runtime_consumer(tmp_path) -> None:
+    qqq_csv = tmp_path / "qqq.csv"
+    _technical_frame().to_csv(qqq_csv, index=False)
+    bundle = build_daily_technical_signal_bundle(
+        {
+            "QQQ": _technical_frame(),
+            "SPY": _technical_frame(),
+        },
+        domain="us_equity",
+        bundle_id_prefix="us_equity.technical.daily",
+        as_of="2025-09-17",
+        provider_dataset="us_equity_daily_ohlcv",
+        raw_artifact_sha256=_sha256(qqq_csv),
+        transform="technical.daily_ohlcv.v1",
+        generated_at="2025-09-17T00:15:00Z",
+        compatible_profiles=("us_equity:nasdaq_sp500_smart_dca",),
+    )
+
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="us_equity:nasdaq_sp500_smart_dca",
+    )
+    assert bundle["bundle_id"] == "us_equity.technical.daily.2025-09-17"
+    assert set(bundle["symbols"]) == {"QQQ", "SPY"}
+    assert bundle["derived_indicators"]["QQQ"]["provider_timestamp"] == (
+        "2025-09-17T00:00:00Z"
+    )
+
+
 def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None:
     input_csv = tmp_path / "btc.csv"
     _btc_frame().to_csv(input_csv, index=False)
@@ -422,6 +509,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     us_public_context_record = signal_source_family_record(
         "us_equity.nasdaq_sp500_public_context_daily"
     )
+    us_technical_record = signal_source_family_record("us_equity.technical_daily")
     catalog = signal_source_family_catalog_payload()
 
     assert known_signal_source_families() == (
@@ -429,6 +517,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
+        "us_equity.technical_daily",
     )
     assert catalog["schema_version"] == "market_signal_source_families.v1"
     assert catalog["families"] == [
@@ -436,11 +525,13 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         us_context_record,
         us_price_proxy_record,
         us_public_context_record,
+        us_technical_record,
     ]
     assert catalog["domain_coverage"]["crypto"]["implemented_families"] == [
         "crypto.btc_cycle_daily"
     ]
     assert catalog["domain_coverage"]["us_equity"]["implemented_families"] == [
+        "us_equity.technical_daily",
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
@@ -473,9 +564,13 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     ) == ()
     runtime_coverage = signal_source_runtime_consumer_coverage()
     assert runtime_coverage["all_runtime_consumers_covered"] is True
-    assert runtime_coverage["known_runtime_consumers"] == ("us_equity:ibit_smart_dca",)
+    assert runtime_coverage["known_runtime_consumers"] == (
+        "us_equity:ibit_smart_dca",
+        "us_equity:nasdaq_sp500_smart_dca",
+    )
     assert runtime_coverage["runtime_consumer_source_families"] == {
-        "us_equity:ibit_smart_dca": ("crypto.btc_cycle_daily",)
+        "us_equity:ibit_smart_dca": ("crypto.btc_cycle_daily",),
+        "us_equity:nasdaq_sp500_smart_dca": ("us_equity.technical_daily",),
     }
     coverage = signal_source_family_consumer_contract_coverage(
         "crypto.btc_cycle_daily"
@@ -484,7 +579,17 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert coverage["consumer_count"] == 5
     assert coverage["required_indicator_fields_by_consumer"][
         "us_equity:ibit_smart_dca"
-    ] == {"BTC-USD": ["ahr999"]}
+    ] == {
+        "BTC-USD": [
+            "close",
+            "sma200",
+            "sma200_gap",
+            "rsi14",
+            "ahr999",
+            "ahr999_sma",
+            "mayer_multiple",
+        ]
+    }
     assert coverage["required_indicator_fields_by_consumer"][
         "research:ibit_btc_ahr999_helper_precomputed_variants"
     ] == {"BTC-USD": ["ahr999", "ahr999_365d_percentile", "ahr999_30d_slope"]}
@@ -498,6 +603,11 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         "us_equity.nasdaq_sp500_context_daily"
     )
     assert us_coverage["consumer_count"] == 1
+    technical_coverage = signal_source_family_consumer_contract_coverage(
+        "us_equity.technical_daily"
+    )
+    assert technical_coverage["consumer_count"] == 1
+    assert technical_coverage["all_required_fields_present"] is True
     assert us_coverage["required_indicator_fields_by_consumer"][
         "research:nasdaq_sp500_external_context_precomputed"
     ] == {
@@ -619,6 +729,7 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     assert domain_result == 0
     domain_payload = json.loads(capsys.readouterr().out)
     assert [family["family"] for family in domain_payload["families"]] == [
+        "us_equity.technical_daily",
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
@@ -651,26 +762,30 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     )
     assert validate_result == 0
     validation_summary = json.loads(capsys.readouterr().out)
-    assert validation_summary["family_count"] == 4
+    assert validation_summary["family_count"] == 5
     assert validation_summary["all_known_families_present"] is True
     assert validation_summary["domain_coverage_present"] is True
     assert validation_summary["domain_count"] == 3
     assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
-    assert validation_summary["implemented_family_count"] == 4
+    assert validation_summary["implemented_family_count"] == 5
     assert validation_summary["planned_family_count"] == 7
-    assert validation_summary["source_profile_count"] == 8
+    assert validation_summary["source_profile_count"] == 9
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["all_runtime_consumers_covered"] is True
     assert validation_summary["runtime_consumer_coverage"][
         "runtime_consumer_source_families"
     ] == {
         "us_equity:ibit_smart_dca": ["crypto.btc_cycle_daily"],
+        "us_equity:nasdaq_sp500_smart_dca": ["us_equity.technical_daily"],
     }
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
     ]["consumer_count"] == 5
     assert validation_summary["consumer_contract_coverage"][
         "us_equity.nasdaq_sp500_context_daily"
+    ]["consumer_count"] == 1
+    assert validation_summary["consumer_contract_coverage"][
+        "us_equity.technical_daily"
     ]["consumer_count"] == 1
     assert validation_summary["source_profile_coverage"][
         "us_equity.nasdaq_sp500_context_daily"
@@ -833,10 +948,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
 
     assert summary["path"] == str(output_json)
     assert summary["schema_version"] == "market_signal_source_families.v1"
-    assert summary["family_count"] == 4
+    assert summary["family_count"] == 5
     assert summary["all_consumer_contracts_satisfied"] is True
     assert summary["domain_coverage_present"] is True
-    assert summary["source_profile_count"] == 8
+    assert summary["source_profile_count"] == 9
     assert summary["sha256"] == _sha256(output_json)
 
     validate_summary = validate_signal_source_family_catalog_file(
@@ -866,10 +981,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert manifest_summary["all_known_families_present"] is True
     assert manifest_summary["domain_count"] == 3
     assert manifest_summary["planned_family_count"] == 7
-    assert manifest_summary["source_profile_count"] == 8
+    assert manifest_summary["source_profile_count"] == 9
     assert manifest_summary["all_consumer_contracts_satisfied"] is True
     assert manifest["catalog_path"] == "signal_source_families.json"
-    assert manifest["source_profile_count"] == 8
+    assert manifest["source_profile_count"] == 9
 
     validation_summary = validate_signal_source_family_catalog_manifest(
         manifest_path,
@@ -1366,6 +1481,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
         "research:nasdaq_sp500_external_context_precomputed",
         "research:nasdaq_sp500_price_proxy",
         "us_equity:ibit_smart_dca",
+        "us_equity:nasdaq_sp500_smart_dca",
     )
     assert payload == {
         "schema_version": "market_signal_consumer_contracts.v1",
@@ -1396,7 +1512,15 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
             "consumer": "us_equity:ibit_smart_dca",
             "canonical_input": "derived_indicators",
             "required_indicator_fields_by_symbol": {
-                "BTC-USD": ["ahr999"],
+                "BTC-USD": [
+                    "close",
+                    "sma200",
+                    "sma200_gap",
+                    "rsi14",
+                    "ahr999",
+                    "ahr999_sma",
+                    "mayer_multiple",
+                ],
             },
         }
     ]
@@ -1506,7 +1630,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 8
+    assert validation_summary["consumer_count"] == 9
     assert validation_summary["local_contract_registry_verified"] is True
 
     cli_output_dir = tmp_path / "cli-contracts"
@@ -1560,7 +1684,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 8
+    assert summary["consumer_count"] == 9
     assert summary["local_contract_registry_verified"] is True
     assert summary["canonical_registry_payload_sha256"] == summary[
         "local_registry_payload_sha256"
@@ -1635,10 +1759,11 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
+        "us_equity.technical_daily",
     ]
     assert summary["matched_source_families"] == ("crypto.btc_cycle_daily",)
     assert summary["matched_source_family_count"] == 1
-    assert summary["consumer_contract_count"] == 8
+    assert summary["consumer_contract_count"] == 9
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
     assert summary["local_contract_registry_verified"] is True
@@ -2040,7 +2165,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "sha256"
     ]
     bad_plan = json.loads(cli_plan_artifact_path.read_text(encoding="utf-8"))
-    bad_plan["as_of"] = "2025-09-17"
+    bad_plan["as_of"] = "2025-09-16"
     bad_plan_path = tmp_path / "bad_runtime_injection_plan.json"
     bad_plan_path.write_text(
         json.dumps(bad_plan, sort_keys=True),
@@ -2101,27 +2226,29 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     config_set_summary = validate_runtime_adapter_config_set_files(
         [runtime_adapter_config_path],
-        require_all_known_runtime_consumers=True,
     )
     assert config_set_summary["schema_version"] == (
         "market_signal_runtime_adapter_config_set.v1"
     )
     assert config_set_summary["consumers"] == ("us_equity:ibit_smart_dca",)
-    assert config_set_summary["all_known_runtime_consumers_present"] is True
+    assert config_set_summary["all_known_runtime_consumers_present"] is False
+    assert config_set_summary["missing_known_runtime_consumers"] == (
+        "us_equity:nasdaq_sp500_smart_dca",
+    )
+    with pytest.raises(ValueError, match="missing known runtime consumers"):
+        validate_runtime_adapter_config_set_files(
+            [runtime_adapter_config_path],
+            require_all_known_runtime_consumers=True,
+        )
     validate_runtime_adapter_config_set_result = audit_consumption_main(
         [
             "--validate-runtime-adapter-config-set-json",
             str(runtime_adapter_config_path),
             "--require-all-known-consumers",
-            "--pretty",
         ]
     )
-    assert validate_runtime_adapter_config_set_result == 0
-    cli_validate_adapter_config_set = json.loads(capsys.readouterr().out)
-    assert cli_validate_adapter_config_set["artifact_type"] == (
-        "market_signal_runtime_adapter_config_set_validation"
-    )
-    assert cli_validate_adapter_config_set["all_known_runtime_consumers_present"] is True
+    assert validate_runtime_adapter_config_set_result == 2
+    assert "missing known runtime consumers" in capsys.readouterr().err
     duplicate_runtime_adapter_config_path = (
         tmp_path / "duplicate_runtime_adapter_config.json"
     )
@@ -2172,30 +2299,22 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     deployment_set_summary = validate_runtime_adapter_deployment_config_set_files(
         [runtime_adapter_config_path],
-        require_all_known_runtime_consumers=True,
     )
     assert deployment_set_summary["schema_version"] == (
         "market_signal_runtime_adapter_deployment_set.v1"
     )
     assert deployment_set_summary["consumers"] == ("us_equity:ibit_smart_dca",)
-    assert deployment_set_summary["all_known_runtime_consumers_present"] is True
+    assert deployment_set_summary["all_known_runtime_consumers_present"] is False
     assert deployment_set_summary["deployments"][0]["current_audit_matched"] is True
     validate_runtime_adapter_deployment_set_result = audit_consumption_main(
         [
             "--validate-runtime-adapter-deployment-set-json",
             str(runtime_adapter_config_path),
             "--require-all-known-consumers",
-            "--pretty",
         ]
     )
-    assert validate_runtime_adapter_deployment_set_result == 0
-    cli_validate_adapter_deployment_set = json.loads(capsys.readouterr().out)
-    assert cli_validate_adapter_deployment_set["artifact_type"] == (
-        "market_signal_runtime_adapter_deployment_set_validation"
-    )
-    assert cli_validate_adapter_deployment_set[
-        "all_known_runtime_consumers_present"
-    ] is True
+    assert validate_runtime_adapter_deployment_set_result == 2
+    assert "missing known runtime consumers" in capsys.readouterr().err
     duplicate_deployment_set_result = audit_consumption_main(
         [
             "--validate-runtime-adapter-deployment-set-json",

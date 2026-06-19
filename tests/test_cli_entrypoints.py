@@ -13,6 +13,7 @@ def test_pyproject_cli_entrypoints_point_to_main_functions() -> None:
     assert {
         "audit-signal-consumption",
         "build-btc-cycle-bundle",
+        "build-daily-technical-bundle",
         "build-platform-handoff",
         "build-research-handoff",
         "export-btc-cycle-research-csv",

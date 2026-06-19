@@ -19,6 +19,7 @@ Repository = "https://github.com/QuantStrategyLab/MarketSignalSources"
 [project.scripts]
 audit-signal-consumption = "market_signal_sources.cli.audit_signal_consumption:main"
 build-btc-cycle-bundle = "market_signal_sources.cli.build_btc_cycle_bundle:main"
+build-daily-technical-bundle = "market_signal_sources.cli.build_daily_technical_bundle:main"
 build-platform-handoff = "market_signal_sources.cli.build_platform_handoff:main"
 build-research-handoff = "market_signal_sources.cli.build_research_handoff:main"
 export-btc-cycle-research-csv = "market_signal_sources.cli.export_btc_cycle_research_csv:main"

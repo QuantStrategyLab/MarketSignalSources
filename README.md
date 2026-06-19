@@ -32,6 +32,8 @@ This repository starts with a narrow MVP:
 
 - read local BTC daily OHLCV CSV
 - compute BTC cycle indicators used by `us_equity:ibit_smart_dca`
+- compute daily OHLCV technical indicators used by
+  `us_equity:nasdaq_sp500_smart_dca`
 - publish a `market_signal_bundle.v1` JSON bundle with quality report, manifest,
   and index files
 
@@ -43,7 +45,7 @@ For the concrete runtime and research handoff consumption contract, see
 [Platform Consumption Contract](docs/platform_consumption_contract.md).
 
 Installed packages expose console-script aliases for platform CI, including
-`build-platform-handoff`, `audit-signal-consumption`,
+`build-daily-technical-bundle`, `build-platform-handoff`, `audit-signal-consumption`,
 `list-signal-source-families`, `list-signal-consumer-contracts`, and
 `validate-quality-report`. The `python -m market_signal_sources.cli...` examples
 below use the same entrypoints.
@@ -111,6 +113,36 @@ python -m market_signal_sources.cli.validate_quality_report \
 The quality report validator rejects `quality_status=fail` by default. Use
 `--allow-fail-status` only for offline inspection of failed source data.
 
+## Daily Technical Bundle
+
+US equity runtime consumers can use the same artifact envelope for common
+technical indicators. The `build-daily-technical-bundle` CLI computes fields
+such as `sma50`, `sma200`, `sma200_gap`, `rsi14`, `drawdown_252d`, volatility,
+momentum, and `trend_score` from a local daily OHLCV CSV:
+
+```bash
+python -m market_signal_sources.cli.build_daily_technical_bundle \
+  --input-csv ./qqq_daily.csv \
+  --output-dir ./data/output/signal_bundles/us_equity/technical/QQQ/2026-06-19 \
+  --as-of 2026-06-19 \
+  --symbol QQQ \
+  --domain us_equity \
+  --bundle-id-prefix us_equity.technical.daily \
+  --provider local_csv \
+  --provider-dataset us_equity_daily_ohlcv \
+  --compatible-profile us_equity:nasdaq_sp500_smart_dca \
+  --source-version 0.1.0 \
+  --code-commit 0000000000000000000000000000000000000000 \
+  --generated-at 2026-06-19T00:15:00Z \
+  --publication-index ./data/output/signal_bundles/index.json \
+  --pretty
+```
+
+The current runtime family `us_equity.technical_daily` covers QQQ/SPY fields
+for `us_equity:nasdaq_sp500_smart_dca`. Multi-symbol publication can be built
+by producer code with `build_daily_technical_signal_bundle`; the single-symbol
+CLI is a small local-input adapter for simple release jobs.
+
 ```bash
 python -m market_signal_sources.cli.validate_signal_bundle \
   ./data/output/crypto/btc/derived_indicators/2026-06-19/manifest.json \
@@ -132,9 +164,11 @@ downstream field coverage before publishing. For
 `research:ibit_btc_ahr999_mayer_precomputed_variants`, the bundle's
 `consumer_contract.compatible_profiles` must include that consumer and the
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
-The production `us_equity:ibit_smart_dca` consumer currently requires only
-`ahr999`; `research:ibit_btc_ahr999_precomputed` mirrors that AHR999-only
-profile for offline candidate comparisons. The research-only
+The production `us_equity:ibit_smart_dca` consumer requires the BTC runtime
+fields needed by the strategy: `close`, `sma200`, `sma200_gap`, `rsi14`,
+`ahr999`, `ahr999_sma`, and `mayer_multiple`.
+`research:ibit_btc_ahr999_precomputed` remains an AHR999-only profile for
+offline candidate comparisons. The research-only
 `research:ibit_btc_ahr999_helper_precomputed_variants` consumer covers the
 precomputed helper fields `ahr999_365d_percentile` and `ahr999_30d_slope`, plus
 `ahr999`, so IBIT helper candidates can be checked against a published contract
