@@ -70,21 +70,29 @@ credential paths, or service lifecycle ownership.
 ## Publication Flow
 
 1. Build a source bundle from local or upstream-approved input data.
-2. Write `quality_report.json`, `signal_bundle.json`, `manifest.json`, and
-   `index.json`. The artifact writer validates the written index chain by
-   default before returning publishable paths.
-3. Validate `quality_report.json` directly, then validate its hash through
+2. Capture provider metadata for the source artifact. The local CSV provider
+   records provider name, dataset, provider timestamp, raw artifact SHA-256,
+   license scope, and generator id; later network providers should return the
+   same metadata shape while adding their own timeout, retry, and rate-limit
+   behavior outside strategy repositories.
+3. Write `quality_report.json`, `signal_bundle.json`, `manifest.json`, and the
+   bundle-directory `index.json`. The artifact writer validates the written
+   index chain by default before returning publishable paths.
+4. Upsert the bundle manifest into a platform-facing publication index such as
+   `signal_bundles/index.json`. This root index can reference multiple dated
+   bundle directories and is the preferred platform lookup entry.
+5. Validate `quality_report.json` directly, then validate its hash through
    `manifest.json`. Manifest validation also checks that the quality report's
    input CSV hash matches the bundle provenance raw artifact hash.
-4. Validate the manifest or index with the target consumer identifier. This
+6. Validate the manifest or index with the target consumer identifier. This
    checks both `consumer_contract.compatible_profiles` membership and required
    indicator field coverage.
    The manifest and index also carry `compatible_profiles`, and validation
    rejects profile drift across index, manifest, and bundle.
-5. Publish the consumer contract registry with its manifest.
-6. Strategy CI validates both the signal manifest and the consumer contract
+7. Publish the consumer contract registry with its manifest.
+8. Strategy CI validates both the signal manifest and the consumer contract
    registry before allowing a strategy config to reference the artifact.
-7. Runtime loads the validated bundle and injects only `derived_indicators`.
+9. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

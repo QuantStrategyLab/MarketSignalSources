@@ -10,11 +10,11 @@ import pandas as pd
 
 from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
-    sha256_file,
+    upsert_signal_bundle_publication_index,
     write_signal_bundle_artifacts,
 )
 from market_signal_sources.artifacts.quality_report import write_ohlcv_quality_report
-from market_signal_sources.providers import load_ohlcv_csv
+from market_signal_sources.providers import load_ohlcv_csv, local_csv_provider_metadata
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -31,17 +31,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             volume_column=args.volume_column,
             as_of=args.as_of,
         )
+        provider_metadata = local_csv_provider_metadata(
+            args.input_csv,
+            as_of=args.as_of,
+            provider=args.provider,
+            provider_dataset=args.provider_dataset,
+            license_scope=args.license_scope,
+        )
         bundle = build_btc_cycle_signal_bundle(
             ohlcv,
             as_of=args.as_of,
             symbol=args.symbol,
-            provider=args.provider,
-            provider_dataset=args.provider_dataset,
-            raw_artifact_sha256=sha256_file(args.input_csv),
+            provider=provider_metadata.provider,
+            provider_dataset=provider_metadata.provider_dataset,
+            raw_artifact_sha256=provider_metadata.raw_artifact_sha256,
             source_version=args.source_version,
             code_commit=args.code_commit,
             generated_at=args.generated_at,
+            provider_timestamp=provider_metadata.provider_timestamp,
             freshness_status=args.freshness_status,
+            license_scope=provider_metadata.license_scope,
+            generated_by=provider_metadata.generated_by,
         )
         output_dir = Path(args.output_dir)
         quality_report_path = output_dir / "quality_report.json"
@@ -63,6 +73,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             quality_report_path=quality_report_path,
         )
         artifact_paths["quality_report"] = quality_report_path
+        if args.publication_index is not None:
+            artifact_paths["publication_index"] = upsert_signal_bundle_publication_index(
+                args.publication_index,
+                artifact_paths["manifest"],
+                generated_at=args.generated_at,
+            )
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -93,6 +109,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--symbol", default="BTC-USD")
     parser.add_argument("--provider", default="local_csv")
     parser.add_argument("--provider-dataset", default="btc_usd_daily_ohlcv")
+    parser.add_argument("--license-scope", default="internal_runtime")
     parser.add_argument("--source-version", default="0.1.0")
     parser.add_argument(
         "--code-commit",
@@ -105,6 +122,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--high-column", default="high")
     parser.add_argument("--low-column", default="low")
     parser.add_argument("--volume-column", default="volume")
+    parser.add_argument(
+        "--publication-index",
+        type=Path,
+        help=(
+            "Optional platform-facing root index to upsert with the generated "
+            "manifest path, for example ./signal_bundles/index.json."
+        ),
+    )
     parser.add_argument("--pretty", action="store_true")
     return parser
 

@@ -11,7 +11,9 @@ import pytest
 from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     build_derived_indicator_signal_bundle,
+    upsert_signal_bundle_publication_index,
     write_signal_bundle_artifacts,
+    write_signal_bundle_publication_index,
 )
 from market_signal_sources.artifacts.quality_report import (
     QualityReportValidationError,
@@ -50,6 +52,7 @@ from market_signal_sources.derived.crypto.btc_cycle import (
     build_btc_cycle_indicator_frame,
     compute_btc_cycle_indicators,
 )
+from market_signal_sources.providers import local_csv_provider_metadata
 
 
 def _btc_frame(rows: int = 260) -> pd.DataFrame:
@@ -268,10 +271,20 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     index = json.loads(paths["index"].read_text(encoding="utf-8"))
     quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
     payload = signal_bundle["derived_indicators"]["BTC-USD"]
+    provider_metadata = local_csv_provider_metadata(
+        input_csv,
+        as_of="2025-09-17",
+        provider="local_csv",
+        provider_dataset="btc_usd_daily_ohlcv",
+    )
 
     assert signal_bundle["schema_version"] == "market_signal_bundle.v1"
     assert signal_bundle["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
     assert payload["provider_timestamp"] == "2025-09-17T00:00:00Z"
+    assert provider_metadata.raw_artifact_sha256 == _sha256(input_csv)
+    assert provider_metadata.provider_timestamp == payload["provider_timestamp"]
+    assert signal_bundle["provenance"]["raw_artifact_sha256"] == _sha256(input_csv)
+    assert signal_bundle["provenance"]["license_scope"] == "internal_runtime"
     assert manifest["schema_version"] == "market_signal_manifest.v1"
     assert manifest["bundle_sha256"] == _sha256(paths["signal_bundle"])
     assert manifest["compatible_profiles"] == signal_bundle["consumer_contract"][
@@ -316,6 +329,64 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     )
     with pytest.raises(SignalBundleValidationError, match="quality_report_sha256"):
         validate_signal_bundle_manifest(paths["manifest"])
+
+
+def test_signal_bundle_publication_index_upserts_manifest_tree(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    publication_root = tmp_path / "signal_bundles"
+    index_path = publication_root / "index.json"
+
+    first_bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    second_bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-18",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-18T00:15:00Z",
+    )
+    first_paths = write_signal_bundle_artifacts(
+        publication_root / "crypto" / "btc" / "derived_indicators" / "2025-09-17",
+        first_bundle,
+    )
+    second_paths = write_signal_bundle_artifacts(
+        publication_root / "crypto" / "btc" / "derived_indicators" / "2025-09-18",
+        second_bundle,
+    )
+
+    write_signal_bundle_publication_index(
+        index_path,
+        (first_paths["manifest"],),
+        generated_at="2025-09-17T00:30:00Z",
+    )
+    upsert_signal_bundle_publication_index(
+        index_path,
+        second_paths["manifest"],
+        generated_at="2025-09-18T00:30:00Z",
+    )
+
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    assert index["generated_at"] == "2025-09-18T00:30:00Z"
+    assert [entry["as_of"] for entry in index["bundles"]] == [
+        "2025-09-17",
+        "2025-09-18",
+    ]
+    assert index["bundles"][0]["manifest_path"] == (
+        "crypto/btc/derived_indicators/2025-09-17/manifest.json"
+    )
+    assert index["bundles"][1]["manifest_sha256"] == _sha256(second_paths["manifest"])
+
+    consumer_summary = validate_signal_bundle_index_for_consumer(
+        index_path,
+        as_of="2025-09-19",
+        consumer="us_equity:ibit_smart_dca",
+    )
+    assert consumer_summary["bundle_id"] == second_bundle["bundle_id"]
+    assert consumer_summary["consumer_profile_compatible"] is True
 
 
 def test_consumer_index_validation_filters_incompatible_newer_bundle(tmp_path) -> None:
@@ -483,7 +554,9 @@ def test_generic_derived_indicator_bundle_can_publish_non_btc_signal(tmp_path) -
 
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     input_csv = tmp_path / "btc.csv"
-    output_dir = tmp_path / "out"
+    publication_root = tmp_path / "signal_bundles"
+    output_dir = publication_root / "crypto" / "btc" / "derived_indicators" / "2025-09-17"
+    publication_index = publication_root / "index.json"
     _btc_frame().to_csv(input_csv, index=False)
 
     result = build_main(
@@ -496,6 +569,8 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
             "2025-09-17",
             "--generated-at",
             "2025-09-17T00:15:00Z",
+            "--publication-index",
+            str(publication_index),
             "--pretty",
         ]
     )
@@ -507,18 +582,27 @@ def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     assert (output_dir / "manifest.json").exists()
     assert (output_dir / "index.json").exists()
     assert (output_dir / "quality_report.json").exists()
+    assert publication_index.exists()
     assert summary["artifacts"]["quality_report"] == str(output_dir / "quality_report.json")
+    assert summary["artifacts"]["publication_index"] == str(publication_index)
     manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    signal_bundle = json.loads((output_dir / "signal_bundle.json").read_text(encoding="utf-8"))
     quality_report = json.loads((output_dir / "quality_report.json").read_text(encoding="utf-8"))
+    root_index = json.loads(publication_index.read_text(encoding="utf-8"))
     assert manifest["bundle_sha256"] == _sha256(output_dir / "signal_bundle.json")
     assert manifest["quality_report_sha256"] == _sha256(output_dir / "quality_report.json")
+    assert signal_bundle["provenance"]["raw_artifact_sha256"] == _sha256(input_csv)
+    assert signal_bundle["freshness"]["provider_timestamp"] == "2025-09-17T00:00:00Z"
+    assert root_index["bundles"][0]["manifest_path"] == (
+        "crypto/btc/derived_indicators/2025-09-17/manifest.json"
+    )
     assert quality_report["quality_status"] == "pass"
     assert quality_report["normalized_row_count"] == 260
 
     validate_result = validate_main(
         [
             "--index",
-            str(output_dir / "index.json"),
+            str(publication_index),
             "--as-of",
             "2025-09-18",
             "--consumer",

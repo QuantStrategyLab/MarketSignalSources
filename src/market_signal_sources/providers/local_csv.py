@@ -1,9 +1,41 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import hashlib
 from os import PathLike
 from pathlib import Path
 
 import pandas as pd
+
+
+@dataclass(frozen=True)
+class LocalCsvProviderMetadata:
+    provider: str
+    provider_dataset: str
+    provider_timestamp: str
+    raw_artifact_sha256: str
+    license_scope: str
+    generated_by: str = "market_signal_sources.local_csv"
+
+
+def local_csv_provider_metadata(
+    path: str | PathLike[str],
+    *,
+    as_of: str,
+    provider: str = "local_csv",
+    provider_dataset: str = "btc_usd_daily_ohlcv",
+    license_scope: str = "internal_runtime",
+) -> LocalCsvProviderMetadata:
+    """Return auditable provider metadata for a local CSV source artifact."""
+
+    normalized_as_of = pd.Timestamp(as_of).normalize().date().isoformat()
+    return LocalCsvProviderMetadata(
+        provider=_non_empty(provider, "provider"),
+        provider_dataset=_non_empty(provider_dataset, "provider_dataset"),
+        provider_timestamp=f"{normalized_as_of}T00:00:00Z",
+        raw_artifact_sha256=_sha256_file(Path(path)),
+        license_scope=_non_empty(license_scope, "license_scope"),
+    )
 
 
 def load_ohlcv_csv(
@@ -54,3 +86,18 @@ def load_ohlcv_csv(
     if output.empty:
         raise ValueError("OHLCV CSV has no usable rows after normalization")
     return output
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _non_empty(value: object, field: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError(f"{field} must be non-empty")
+    return normalized

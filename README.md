@@ -21,7 +21,7 @@ Example:
 ```bash
 python -m market_signal_sources.cli.build_btc_cycle_bundle \
   --input-csv ./btc_daily.csv \
-  --output-dir ./data/output/crypto/btc/derived_indicators/2026-06-19 \
+  --output-dir ./data/output/signal_bundles/crypto/btc/derived_indicators/2026-06-19 \
   --as-of 2026-06-19 \
   --symbol BTC-USD \
   --provider local_csv \
@@ -29,6 +29,7 @@ python -m market_signal_sources.cli.build_btc_cycle_bundle \
   --source-version 0.1.0 \
   --code-commit 0000000000000000000000000000000000000000 \
   --generated-at 2026-06-19T00:15:00Z \
+  --publication-index ./data/output/signal_bundles/index.json \
   --pretty
 ```
 
@@ -37,11 +38,21 @@ Outputs:
 - `signal_bundle.json`
 - `quality_report.json`
 - `manifest.json`
-- `index.json`
+- bundle-local `index.json`
+- optional publication root `signal_bundles/index.json`
 
 The bundle writer self-validates the written `index.json` -> `manifest.json` ->
 `signal_bundle.json` chain by default before returning paths, so a structurally
 inconsistent bundle fails during the build step rather than later in platform CI.
+When `--publication-index` is provided, the generated manifest is also upserted
+into a platform-facing root index. That root index is the intended lookup point
+for platforms that select the latest fresh bundle across multiple dated artifact
+directories.
+
+The local CSV provider records provider metadata before bundle construction:
+provider name, dataset, provider timestamp, raw CSV SHA-256, license scope, and
+generator id. These fields are written into bundle freshness/provenance so a
+platform can audit which source file produced the injected `derived_indicators`.
 
 `quality_report.json` uses `market_signal_quality_report.v1` and records raw row
 count, normalized row count, date range, duplicate dates, dropped invalid rows,
@@ -71,7 +82,7 @@ Or resolve through the local index:
 
 ```bash
 python -m market_signal_sources.cli.validate_signal_bundle \
-  --index ./data/output/crypto/btc/derived_indicators/2026-06-19/index.json \
+  --index ./data/output/signal_bundles/index.json \
   --as-of 2026-06-20 \
   --consumer research:ibit_btc_ahr999_mayer_precomputed_variants \
   --pretty

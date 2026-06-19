@@ -8,7 +8,9 @@ from .artifacts.signal_bundle import (
     MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
     build_btc_cycle_signal_bundle,
     build_derived_indicator_signal_bundle,
+    upsert_signal_bundle_publication_index,
     write_signal_bundle_artifacts,
+    write_signal_bundle_publication_index,
 )
 from .artifacts.consumer_contracts import (
     CONSUMER_REQUIRED_INDICATOR_FIELDS,
@@ -99,4 +101,6 @@ __all__ = [
     "write_ohlcv_quality_report",
     "write_research_export_manifest",
     "write_signal_bundle_artifacts",
+    "write_signal_bundle_publication_index",
+    "upsert_signal_bundle_publication_index",
 ]
