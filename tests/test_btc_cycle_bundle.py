@@ -1995,6 +1995,8 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "market_signal_runtime_adapter_deployment.v1"
     )
     assert deployment_summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert deployment_summary["handoff_path"] == str(cli_index_path)
+    assert deployment_summary["audit_handoff_path"] == str(cli_index_path)
     assert deployment_summary["runtime_plan_matched"] is True
     validate_runtime_adapter_deployment_result = audit_consumption_main(
         [
@@ -2011,6 +2013,29 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_adapter_deployment["runtime_plan_sha256"] == (
         cli_plan_artifact_summary["sha256"]
     )
+    bad_handoff_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "signal_handoff_index": str(tmp_path / "other_platform_handoff_index.json"),
+    }
+    bad_handoff_runtime_adapter_config_path = (
+        tmp_path / "bad_handoff_runtime_adapter_config.json"
+    )
+    bad_handoff_runtime_adapter_config_path.write_text(
+        json.dumps(bad_handoff_runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="handoff path mismatch"):
+        validate_runtime_adapter_deployment_config_file(
+            bad_handoff_runtime_adapter_config_path
+        )
+    bad_handoff_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(bad_handoff_runtime_adapter_config_path),
+        ]
+    )
+    assert bad_handoff_deployment_result == 2
+    assert "handoff path mismatch" in capsys.readouterr().err
     bad_runtime_adapter_config = {
         **runtime_adapter_config,
         "signal_consumer": "research:ibit_btc_ahr999_precomputed",

@@ -231,8 +231,8 @@ python -m market_signal_sources.cli.audit_signal_consumption \
 The config validation only checks the platform-owned config shape and invalid
 combinations. The deployment validation also reads
 `saved_consumption_audit_json` and, when present, `saved_runtime_plan_json`; it
-confirms the config consumer, handoff source, `as_of`, accepted freshness, audit
-identity, and runtime plan match before startup injection.
+confirms the config consumer, handoff source, handoff path, `as_of`, accepted
+freshness, audit identity, and runtime plan match before startup injection.
 
 Required adapter config semantics:
 
@@ -251,6 +251,7 @@ Invalid combinations should fail before strategy evaluation:
 - neither handoff lookup field is set
 - `signal_handoff_index` is set without `signal_as_of`
 - `signal_consumer` starts with `research:`
+- configured handoff path does not match the saved consumption audit path
 - `saved_runtime_plan_json` is used without a matching
   `saved_consumption_audit_json`
 

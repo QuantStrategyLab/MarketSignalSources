@@ -279,6 +279,17 @@ def validate_runtime_adapter_deployment_config_file(
         raise ValueError("runtime adapter deployment consumer mismatch")
     if config_summary["handoff_source"] != audit_payload.get("handoff_source"):
         raise ValueError("runtime adapter deployment handoff_source mismatch")
+    config_handoff_path = _config_relative_path(
+        config_path,
+        str(config_summary["handoff_path"]),
+    )
+    audit_handoff_path = _audit_handoff_path(
+        config_path,
+        str(config_summary["handoff_source"]),
+        audit_payload,
+    )
+    if _normalized_path(config_handoff_path) != _normalized_path(audit_handoff_path):
+        raise ValueError("runtime adapter deployment handoff path mismatch")
     if config_summary.get("as_of") and config_summary["as_of"] != audit_payload.get("as_of"):
         raise ValueError("runtime adapter deployment as_of mismatch")
     if audit_payload.get("freshness_status") not in config_summary[
@@ -304,6 +315,8 @@ def validate_runtime_adapter_deployment_config_file(
         "strategy": config_summary.get("strategy", ""),
         "consumer": config_summary["consumer"],
         "handoff_source": config_summary["handoff_source"],
+        "handoff_path": str(config_handoff_path),
+        "audit_handoff_path": str(audit_handoff_path),
         "as_of": audit_payload["as_of"],
         "freshness_status": audit_payload["freshness_status"],
         "accepted_freshness_statuses": config_summary[
@@ -656,6 +669,26 @@ def _config_relative_path(config_path: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return config_path.parent / path
+
+
+def _audit_handoff_path(
+    config_path: Path,
+    handoff_source: str,
+    audit_payload: Mapping[str, Any],
+) -> Path:
+    audit_field = (
+        "index_path"
+        if handoff_source == "platform_handoff_index"
+        else "handoff_manifest_path"
+    )
+    raw_path = str(audit_payload.get(audit_field, "") or "").strip()
+    if not raw_path:
+        raise ValueError("runtime adapter deployment audit handoff path missing")
+    return _config_relative_path(config_path, raw_path)
+
+
+def _normalized_path(path: Path) -> str:
+    return str(path.expanduser().resolve(strict=False))
 
 
 def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:
