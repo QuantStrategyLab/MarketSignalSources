@@ -239,7 +239,7 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     bundle = build_btc_cycle_signal_bundle(
         _btc_frame(),
         as_of="2025-09-17",
-        raw_artifact_sha256="0" * 64,
+        raw_artifact_sha256=_sha256(input_csv),
         generated_at="2025-09-17T00:15:00Z",
     )
 
@@ -291,6 +291,35 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     )
     with pytest.raises(SignalBundleValidationError, match="quality_report_sha256"):
         validate_signal_bundle_manifest(paths["manifest"])
+
+
+def test_write_signal_bundle_artifacts_rejects_quality_report_raw_input_mismatch(
+    tmp_path,
+) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    quality_report_path = tmp_path / "quality_report.json"
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+
+    with pytest.raises(
+        SignalBundleValidationError,
+        match="input_csv.sha256 mismatch",
+    ):
+        write_signal_bundle_artifacts(
+            tmp_path,
+            bundle,
+            quality_report_path=quality_report_path,
+        )
 
 
 def test_write_signal_bundle_artifacts_self_validates_written_index(tmp_path) -> None:

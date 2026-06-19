@@ -73,7 +73,8 @@ credential paths, or service lifecycle ownership.
    `index.json`. The artifact writer validates the written index chain by
    default before returning publishable paths.
 3. Validate `quality_report.json` directly, then validate its hash through
-   `manifest.json`.
+   `manifest.json`. Manifest validation also checks that the quality report's
+   input CSV hash matches the bundle provenance raw artifact hash.
 4. Validate the manifest or index with the target consumer identifier.
 5. Publish the consumer contract registry with its manifest.
 6. Strategy CI validates both the signal manifest and the consumer contract

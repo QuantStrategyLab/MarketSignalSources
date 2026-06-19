@@ -110,16 +110,16 @@ def validate_signal_bundle_manifest(
             "signal bundle sha256 mismatch: "
             f"expected {expected_sha256}, got {actual_sha256}"
         )
-    quality_report_summary = _validate_optional_quality_report_reference(
-        manifest,
-        manifest_root=manifest_path.parent.resolve(),
-    )
-
     bundle = _load_json_mapping(bundle_path, label="signal bundle")
     validate_signal_bundle(
         bundle,
         expected_canonical_input=expected_canonical_input,
         accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    quality_report_summary = _validate_optional_quality_report_reference(
+        manifest,
+        manifest_root=manifest_path.parent.resolve(),
+        bundle=bundle,
     )
     _validate_manifest_bundle_consistency(manifest, bundle)
     summary = signal_bundle_audit_summary(bundle)
@@ -511,6 +511,7 @@ def _validate_optional_quality_report_reference(
     manifest: Mapping[str, Any],
     *,
     manifest_root: Path,
+    bundle: Mapping[str, Any],
 ) -> dict[str, Any]:
     if not _has_non_empty_value(manifest, "quality_report_path"):
         return {}
@@ -529,6 +530,7 @@ def _validate_optional_quality_report_reference(
         )
     quality_report = _load_json_mapping(quality_path, label="quality report")
     _validate_quality_report(quality_report)
+    _validate_quality_report_bundle_consistency(quality_report, bundle)
     return {
         "quality_report_path": str(quality_path.resolve()),
         "quality_report_sha256": expected_sha256,
@@ -540,6 +542,28 @@ def _validate_optional_quality_report_reference(
         "quality_first_date": str(quality_report["first_date"]),
         "quality_last_date": str(quality_report["last_date"]),
     }
+
+
+def _validate_quality_report_bundle_consistency(
+    quality_report: Mapping[str, Any],
+    bundle: Mapping[str, Any],
+) -> None:
+    input_csv = quality_report.get("input_csv")
+    provenance = bundle.get("provenance")
+    if not isinstance(input_csv, Mapping):
+        raise SignalBundleValidationError("quality report input_csv must be a mapping")
+    if not isinstance(provenance, Mapping):
+        raise SignalBundleValidationError("signal bundle provenance must be a mapping")
+    quality_input_sha256 = str(input_csv.get("sha256", "")).strip().lower()
+    bundle_raw_sha256 = str(provenance.get("raw_artifact_sha256", "")).strip().lower()
+    if not quality_input_sha256:
+        raise SignalBundleValidationError("quality report input_csv.sha256 is required")
+    if quality_input_sha256 != bundle_raw_sha256:
+        raise SignalBundleValidationError(
+            "quality report input_csv.sha256 mismatch with "
+            "signal bundle provenance.raw_artifact_sha256: "
+            f"expected {bundle_raw_sha256}, got {quality_input_sha256}"
+        )
 
 
 def _validate_quality_report(report: Mapping[str, Any]) -> None:
