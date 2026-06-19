@@ -19,6 +19,7 @@ SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION = "market_signal_source_families.v1"
 SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION = (
     "market_signal_source_family_catalog_manifest.v1"
 )
+SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION = "market_signal_ownership_matrix.v1"
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
         "api_key",
@@ -513,6 +514,42 @@ def signal_source_domain_coverage_payload() -> dict[str, Any]:
     return _json_safe_value(SIGNAL_SOURCE_DOMAIN_COVERAGE)
 
 
+def signal_ownership_matrix_payload(
+    *,
+    consumers: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """Return consumer-to-source ownership metadata for runtime governance."""
+
+    selected_consumers = (
+        tuple(consumers)
+        if consumers is not None
+        else known_signal_consumers()
+    )
+    records = [
+        _signal_ownership_record(consumer)
+        for consumer in selected_consumers
+    ]
+    runtime_records = [
+        record
+        for record in records
+        if record["consumer_kind"] == "runtime"
+    ]
+    return {
+        "schema_version": SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION,
+        "consumer_count": len(records),
+        "runtime_consumer_count": len(runtime_records),
+        "all_runtime_consumers_have_source_family": all(
+            bool(record["source_families"])
+            for record in runtime_records
+        ),
+        "all_runtime_consumers_cover_required_fields": all(
+            bool(record["all_required_fields_covered"])
+            for record in runtime_records
+        ),
+        "consumers": records,
+    }
+
+
 def signal_source_family_catalog_payload(
     *,
     families: Iterable[str] | None = None,
@@ -602,6 +639,123 @@ def write_signal_source_family_catalog_artifacts(
         catalog_summary=catalog_summary,
         manifest=manifest,
     )
+
+
+def _signal_ownership_record(consumer: str) -> dict[str, Any]:
+    normalized_consumer = str(consumer or "").strip()
+    required_fields = required_indicator_fields_for_consumer(normalized_consumer)
+    source_families = [
+        _signal_ownership_source_family_record(
+            signal_source_family_record(family),
+            consumer=normalized_consumer,
+            required_fields=required_fields,
+        )
+        for family in known_signal_source_families()
+        if normalized_consumer
+        in compatible_profiles_for_signal_source_family(family)
+    ]
+    missing_fields_by_symbol = _missing_required_fields_by_symbol(
+        required_fields,
+        source_families=source_families,
+    )
+    return {
+        "consumer": normalized_consumer,
+        "consumer_kind": (
+            "research"
+            if normalized_consumer.startswith("research:")
+            else "runtime"
+        ),
+        "canonical_input": CANONICAL_INPUT_DERIVED_INDICATORS,
+        "required_indicator_fields_by_symbol": {
+            symbol: list(fields)
+            for symbol, fields in sorted(required_fields.items())
+        },
+        "source_families": source_families,
+        "source_family_count": len(source_families),
+        "missing_required_fields_by_symbol": {
+            symbol: fields
+            for symbol, fields in sorted(missing_fields_by_symbol.items())
+            if fields
+        },
+        "all_required_fields_covered": not any(
+            missing_fields_by_symbol.values()
+        ),
+    }
+
+
+def _signal_ownership_source_family_record(
+    record: Mapping[str, Any],
+    *,
+    consumer: str,
+    required_fields: Mapping[str, tuple[str, ...]],
+) -> dict[str, Any]:
+    family_symbols = {
+        str(symbol)
+        for symbol in record.get("symbols", ())
+    }
+    family_fields = {
+        str(field)
+        for field in record.get("derived_indicator_fields", ())
+    }
+    covered_fields_by_symbol = {
+        symbol: [
+            field
+            for field in fields
+            if symbol in family_symbols and field in family_fields
+        ]
+        for symbol, fields in sorted(required_fields.items())
+    }
+    source_profiles = tuple(record.get("source_profiles", ()) or ())
+    publication_lag_policies = tuple(
+        str(profile.get("publication_lag_policy", "")).strip()
+        for profile in source_profiles
+        if isinstance(profile, Mapping)
+        and str(profile.get("publication_lag_policy", "")).strip()
+    )
+    return {
+        "family": str(record["family"]),
+        "domain": str(record["domain"]),
+        "transform": str(record["transform"]),
+        "provider_dataset": str(record["provider_dataset"]),
+        "freshness_policy": str(record["freshness_policy"]),
+        "publication_lag_policies": list(dict.fromkeys(publication_lag_policies)),
+        "runtime_consumer": consumer
+        in tuple(str(item) for item in record.get("runtime_consumers", ())),
+        "research_consumer": consumer
+        in tuple(str(item) for item in record.get("research_consumers", ())),
+        "symbols": list(record.get("symbols", ())),
+        "derived_indicator_fields": list(record.get("derived_indicator_fields", ())),
+        "covered_required_fields_by_symbol": covered_fields_by_symbol,
+    }
+
+
+def _missing_required_fields_by_symbol(
+    required_fields: Mapping[str, tuple[str, ...]],
+    *,
+    source_families: Iterable[Mapping[str, Any]],
+) -> dict[str, list[str]]:
+    covered: dict[str, set[str]] = {
+        symbol: set()
+        for symbol in required_fields
+    }
+    for family in source_families:
+        family_coverage = family.get("covered_required_fields_by_symbol", {})
+        if not isinstance(family_coverage, Mapping):
+            continue
+        for symbol, fields in family_coverage.items():
+            if symbol not in covered:
+                continue
+            if isinstance(fields, (str, bytes)) or not isinstance(fields, Iterable):
+                continue
+            covered[str(symbol)].update(str(field) for field in fields)
+    return {
+        symbol: [
+            field
+            for field in fields
+            if field not in covered[symbol]
+        ]
+        for symbol, fields in required_fields.items()
+    }
 
 
 def validate_signal_source_family_catalog(

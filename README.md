@@ -288,6 +288,16 @@ matching the related quality-report or research freshness assumptions.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
+For rollout governance, the ownership matrix maps each consumer back to the
+implemented source families, required fields, freshness policies, and provider
+lag policies that own it:
+
+```bash
+python -m market_signal_sources.cli.list_signal_ownership_matrix --pretty
+```
+
+A runtime consumer should not be enabled until the matrix reports that it has a
+source family and all required fields are covered.
 
 ```bash
 python -m market_signal_sources.cli.list_signal_source_families \
@@ -338,6 +348,29 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --require-all-known-consumers \
   --pretty
 ```
+
+For the production release path, a single command can wrap an already-built
+bundle manifest into the full platform handoff directory. The bundle manifest
+must already live under the dated `--publication-dir`; provider fetching and
+bundle construction stay in the upstream job step.
+
+```bash
+python -m market_signal_sources.cli.publish_platform_signal_handoff \
+  --publication-dir ./data/output/platform_handoffs/2026-06-19 \
+  --signal-bundle-manifest ./data/output/platform_handoffs/2026-06-19/bundle/manifest.json \
+  --consumer us_equity:ibit_smart_dca \
+  --index-path ./data/output/platform_handoffs/index.json \
+  --lookup-as-of 2026-06-20 \
+  --pretty
+```
+
+The publication command writes and validates the consumer registry, source
+catalog, platform handoff, handoff index, consumption audit, runtime injection
+plan, and runtime adapter config. It defaults to strict gates for all known
+source families, all known consumers, and runtime consumer coverage. If a
+platform marks unified signals as required, failure to resolve a valid artifact
+should fail fast; only validated `last_valid` artifacts inside the configured
+stale window are an acceptable fallback.
 
 Platform CI can then validate one handoff manifest before loading the linked
 bundle:
