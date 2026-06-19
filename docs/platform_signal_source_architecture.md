@@ -42,6 +42,15 @@ The platform-facing outputs are:
 - `market_signal_research_handoff.v1`: research-facing manifest that pins one
   `research_export.v1` CSV manifest, the source family catalog manifest, and the
   consumer contract registry manifest as one offline research unit.
+- `market_signal_consumption_audit.v1`: deployment-facing decision record that
+  proves one platform or research handoff was validated for one explicit
+  consumer.
+- `market_signal_runtime_injection_plan.v1`: minimal runtime mapping derived
+  from a successful runtime consumption audit, such as which bundle payload field
+  to inject into which `market_data` key.
+- `market_signal_runtime_plan_audit_match.v1`: validation summary proving a
+  saved runtime plan still matches the saved consumption audit identity, bundle,
+  manifest hashes, source families, consumer contracts, and payload path.
 
 For offline strategy research, `research_export.v1` can also pin a
 `quality_report` file record. That keeps public or local context-source quality
@@ -125,13 +134,25 @@ credential paths, or service lifecycle ownership.
    single platform handoff unit.
 9. Upsert the handoff manifest into `market_signal_platform_handoff_index.v1`
    when the platform needs a stable lookup entry across dated releases.
-10. Strategy CI validates the handoff manifest or handoff index before allowing a strategy config
-   to reference the artifact. Strategy repositories should also compare the
-   source catalog's transform and `compatible_profiles`, plus the registry's
-   consumer entries, with their own expected consumer identifiers and required
-   fields, so a hash-valid catalog or registry that omits the target strategy
-   still fails before release.
-11. Runtime loads the validated bundle and injects only `derived_indicators`.
+10. Strategy CI validates the handoff manifest or handoff index before allowing
+   a strategy config to reference the artifact. Strategy repositories should also
+   compare the source catalog's transform and `compatible_profiles`, plus the
+   registry's consumer entries, with their own expected consumer identifiers and
+   required fields, so a hash-valid catalog or registry that omits the target
+   strategy still fails before release.
+11. CI or release automation writes `market_signal_consumption_audit.v1` for the
+   target consumer. Runtime startup validates that saved audit before enabling
+   the strategy.
+12. If the platform wants a small runtime-only handoff, derive and persist
+   `market_signal_runtime_injection_plan.v1` from the audit, then validate it
+   together with the saved audit through
+   `market_signal_runtime_plan_audit_match.v1`.
+13. Runtime loads the validated bundle and injects only `derived_indicators`.
+
+The audit and runtime plan artifacts are intentionally downstream-facing. They
+do not introduce provider calls or strategy decisions into this repository; they
+only prove that a platform can safely map an already-published signal bundle into
+one canonical strategy input.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

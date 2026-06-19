@@ -147,6 +147,20 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --pretty
 ```
 
+The runtime adapter should treat those saved artifacts as a small state machine:
+
+| Stage | Required artifact | Required status |
+| --- | --- | --- |
+| Deploy gate | `market_signal_consumption_audit.v1` | `ready_for_runtime_injection=true` and `runtime_injection_allowed=true` |
+| Startup gate | saved audit artifact | `validate-json` succeeds against the same file selected at deploy |
+| Injection mapping | `market_signal_runtime_injection_plan.v1` | `injection_allowed=true` and `target_path=market_data.<market_data_key>` |
+| Plan provenance | `market_signal_runtime_plan_audit_match.v1` | `matched=true` for the saved plan and saved audit |
+
+Only after all four checks pass should the platform inject the payload into
+`StrategyContext.market_data`. A valid runtime plan without a matching saved
+audit is not enough to enable a strategy, because it proves shape but not
+deployment identity.
+
 For runtime handoffs, the audit summary must show
 `ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
 expected `runtime_market_data_key`, such as `derived_indicators`.
