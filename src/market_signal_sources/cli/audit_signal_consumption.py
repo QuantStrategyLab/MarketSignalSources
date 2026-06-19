@@ -5,7 +5,10 @@ from collections.abc import Sequence
 import json
 import sys
 
-from market_signal_sources.artifacts.consumption import audit_signal_consumption
+from market_signal_sources.artifacts.consumption import (
+    audit_signal_consumption,
+    runtime_signal_injection_plan,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -22,6 +25,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             require_all_known_families=args.require_all_known_families,
             require_all_known_consumers=args.require_all_known_consumers,
         )
+        if args.runtime_injection_plan:
+            payload = runtime_signal_injection_plan(payload)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -55,6 +60,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--require-all-known-consumers",
         action="store_true",
         help="Require the consumer contract registry to include every known consumer.",
+    )
+    parser.add_argument(
+        "--runtime-injection-plan",
+        action="store_true",
+        help=(
+            "Print the minimal runtime injection plan instead of the full audit "
+            "summary. Requires a runtime platform handoff."
+        ),
     )
     parser.add_argument("--pretty", action="store_true")
     return parser

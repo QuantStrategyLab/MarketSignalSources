@@ -1703,6 +1703,28 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_consumption_summary["consumption_mode"] == "runtime_platform"
     assert cli_consumption_summary["runtime_injection_allowed"] is True
     assert cli_consumption_summary["consumer"] == "us_equity:ibit_smart_dca"
+    plan_result = audit_consumption_main(
+        [
+            "--platform-handoff-index",
+            str(cli_index_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--as-of",
+            "2025-09-18",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--runtime-injection-plan",
+            "--pretty",
+        ]
+    )
+    assert plan_result == 0
+    cli_injection_plan = json.loads(capsys.readouterr().out)
+    assert cli_injection_plan["schema_version"] == (
+        "market_signal_runtime_injection_plan.v1"
+    )
+    assert cli_injection_plan["market_data_key"] == "derived_indicators"
+    assert cli_injection_plan["target_path"] == "market_data.derived_indicators"
+    assert cli_injection_plan["consumer"] == "us_equity:ibit_smart_dca"
 
     with pytest.raises(ValueError, match="consumer is required"):
         audit_signal_consumption(platform_handoff_manifest=handoff_path, consumer="")
@@ -1886,6 +1908,17 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     assert cli_consumption_summary["consumer"] == (
         "research:nasdaq_sp500_cape_vix_external_context_precomputed"
     )
+    plan_result = audit_consumption_main(
+        [
+            "--research-handoff-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--runtime-injection-plan",
+        ]
+    )
+    assert plan_result == 2
+    assert "not runtime-injectable" in capsys.readouterr().err
 
     wrong_consumer_result = research_handoff_main(
         [
