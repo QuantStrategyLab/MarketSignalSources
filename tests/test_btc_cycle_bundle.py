@@ -49,6 +49,8 @@ from market_signal_sources.artifacts.consumer_contracts import (
 from market_signal_sources.artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
+    validate_consumption_audit_file,
+    write_consumption_audit_artifact,
 )
 from market_signal_sources.artifacts.platform_handoff import (
     resolve_platform_signal_handoff_manifest_from_index,
@@ -1736,6 +1738,27 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert consumption_summary["matched_source_family_count"] == 1
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["consumer_contract_verified"] is True
+    audit_artifact_path = tmp_path / "consumption_audit.json"
+    audit_artifact_summary = write_consumption_audit_artifact(
+        audit_artifact_path,
+        consumption_summary,
+    )
+    assert audit_artifact_summary["schema_version"] == (
+        "market_signal_consumption_audit.v1"
+    )
+    assert audit_artifact_summary["consumption_mode"] == "runtime_platform"
+    assert audit_artifact_summary["consumer"] == "us_equity:ibit_smart_dca"
+    validated_audit_artifact = validate_consumption_audit_file(audit_artifact_path)
+    assert validated_audit_artifact["sha256"] == audit_artifact_summary["sha256"]
+    bad_audit = json.loads(audit_artifact_path.read_text(encoding="utf-8"))
+    bad_audit["api_token"] = "redacted"
+    bad_audit_path = tmp_path / "bad_consumption_audit.json"
+    bad_audit_path.write_text(
+        json.dumps(bad_audit, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="forbidden key"):
+        validate_consumption_audit_file(bad_audit_path)
     injection_plan = runtime_signal_injection_plan(consumption_summary)
     assert injection_plan["schema_version"] == (
         "market_signal_runtime_injection_plan.v1"
@@ -1780,6 +1803,38 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_consumption_summary["consumption_mode"] == "runtime_platform"
     assert cli_consumption_summary["runtime_injection_allowed"] is True
     assert cli_consumption_summary["consumer"] == "us_equity:ibit_smart_dca"
+    cli_audit_artifact_path = tmp_path / "cli_consumption_audit.json"
+    write_audit_result = audit_consumption_main(
+        [
+            "--platform-handoff-index",
+            str(cli_index_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--as-of",
+            "2025-09-18",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--output-json",
+            str(cli_audit_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert write_audit_result == 0
+    cli_audit_artifact_summary = json.loads(capsys.readouterr().out)
+    assert cli_audit_artifact_summary["path"] == str(cli_audit_artifact_path)
+    assert cli_audit_artifact_summary["consumption_mode"] == "runtime_platform"
+    validate_audit_result = audit_consumption_main(
+        [
+            "--validate-json",
+            str(cli_audit_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert validate_audit_result == 0
+    cli_validate_audit_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_audit_summary["sha256"] == cli_audit_artifact_summary[
+        "sha256"
+    ]
     plan_result = audit_consumption_main(
         [
             "--platform-handoff-index",
@@ -2091,6 +2146,19 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     )
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["summary_verified"] is True
+    research_audit_artifact_path = tmp_path / "research_consumption_audit.json"
+    research_audit_artifact_summary = write_consumption_audit_artifact(
+        research_audit_artifact_path,
+        consumption_summary,
+    )
+    assert research_audit_artifact_summary["consumption_mode"] == "offline_research"
+    assert research_audit_artifact_summary["ready_for_runtime_injection"] is False
+    assert (
+        validate_consumption_audit_file(research_audit_artifact_path)[
+            "runtime_injection_allowed"
+        ]
+        is False
+    )
     with pytest.raises(ValueError, match="not runtime-injectable"):
         runtime_signal_injection_plan(consumption_summary)
 
@@ -2109,6 +2177,35 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     assert cli_consumption_summary["runtime_injection_allowed"] is False
     assert cli_consumption_summary["consumer"] == (
         "research:nasdaq_sp500_cape_vix_external_context_precomputed"
+    )
+    cli_research_audit_artifact_path = tmp_path / "cli_research_consumption_audit.json"
+    write_research_audit_result = audit_consumption_main(
+        [
+            "--research-handoff-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--output-json",
+            str(cli_research_audit_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert write_research_audit_result == 0
+    cli_research_audit_artifact_summary = json.loads(capsys.readouterr().out)
+    assert cli_research_audit_artifact_summary[
+        "consumption_mode"
+    ] == "offline_research"
+    validate_research_audit_result = audit_consumption_main(
+        [
+            "--validate-json",
+            str(cli_research_audit_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert validate_research_audit_result == 0
+    cli_validate_research_audit = json.loads(capsys.readouterr().out)
+    assert cli_validate_research_audit["sha256"] == (
+        cli_research_audit_artifact_summary["sha256"]
     )
     plan_result = audit_consumption_main(
         [

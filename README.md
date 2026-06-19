@@ -279,6 +279,24 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --pretty
 ```
 
+To persist the same decision record next to a deployment, write and validate an
+audit artifact:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --platform-handoff-index ./data/output/platform_handoffs/index.json \
+  --consumer us_equity:ibit_smart_dca \
+  --as-of 2026-06-19 \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --output-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
+  --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
+  --pretty
+```
+
 For platform lookup across dated handoffs, publish a handoff index and validate
 it by consumer and `as_of`:
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+import hashlib
+import json
 from os import PathLike
+from pathlib import Path
 from typing import Any
 
 from .platform_handoff import (
@@ -18,6 +21,18 @@ MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION = (
 )
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
 _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
+_FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
+    {
+        "api_key",
+        "authorization",
+        "cookie",
+        "credential",
+        "password",
+        "secret",
+        "signed_url",
+        "token",
+    }
+)
 
 
 def audit_signal_consumption(
@@ -153,6 +168,53 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
     }
 
 
+def write_consumption_audit_artifact(
+    path: str | PathLike[str],
+    audit_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Write a validated consumption audit JSON artifact and return metadata."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _validate_consumption_audit_payload(audit_summary)
+    output_path.write_text(
+        json.dumps(_json_safe_value(audit_summary), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return validate_consumption_audit_file(output_path)
+
+
+def validate_consumption_audit_file(
+    path: str | PathLike[str],
+) -> dict[str, Any]:
+    """Validate a saved market_signal_consumption_audit.v1 JSON artifact."""
+
+    audit_path = Path(path)
+    with audit_path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    if not isinstance(payload, Mapping):
+        raise ValueError("consumption audit artifact must be a JSON object")
+    _validate_consumption_audit_payload(payload)
+    return {
+        "path": str(audit_path),
+        "schema_version": payload["schema_version"],
+        "artifact_type": payload["artifact_type"],
+        "consumption_mode": payload["consumption_mode"],
+        "consumer": payload["consumer"],
+        "ready_for_consumption": payload["ready_for_consumption"],
+        "ready_for_runtime_injection": payload["ready_for_runtime_injection"],
+        "ready_for_research_consumption": payload[
+            "ready_for_research_consumption"
+        ],
+        "runtime_injection_allowed": payload["runtime_injection_allowed"],
+        "linked_manifest_sha256s_verified": payload[
+            "linked_manifest_sha256s_verified"
+        ],
+        "sha256": _sha256_file(audit_path),
+        "size_bytes": audit_path.stat().st_size,
+    }
+
+
 def _runtime_consumption_audit(
     summary: dict[str, Any],
     *,
@@ -285,3 +347,129 @@ def _required_string(payload: Mapping[str, Any], field: str) -> str:
     if not value:
         raise ValueError(f"consumption audit missing required field: {field}")
     return value
+
+
+def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:
+    _reject_sensitive_keys(payload)
+    if payload.get("schema_version") != MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION:
+        raise ValueError("consumption audit schema_version mismatch")
+    if payload.get("artifact_type") != _ARTIFACT_TYPE:
+        raise ValueError("consumption audit artifact_type mismatch")
+    mode = _required_string(payload, "consumption_mode")
+    if mode == "runtime_platform":
+        _validate_runtime_consumption_audit(payload)
+    elif mode == "offline_research":
+        _validate_research_consumption_audit(payload)
+    else:
+        raise ValueError(f"unknown consumption audit mode: {mode}")
+    if payload.get("linked_manifest_sha256s_verified") is not True:
+        raise ValueError("consumption audit linked manifest hashes are not verified")
+    if payload.get("consumer_contract_verified") is not True:
+        raise ValueError("consumption audit consumer contract is not verified")
+    if payload.get("source_catalog_verified") is not True:
+        raise ValueError("consumption audit source catalog is not verified")
+
+
+def _validate_runtime_consumption_audit(payload: Mapping[str, Any]) -> None:
+    for field in (
+        "consumer",
+        "canonical_input",
+        "bundle_id",
+        "as_of",
+        "freshness_status",
+        "handoff_manifest_path",
+        "signal_bundle_manifest_path",
+        "source_family_catalog_manifest_path",
+        "consumer_contract_registry_manifest_path",
+        "runtime_market_data_key",
+        "runtime_payload_field",
+    ):
+        _required_string(payload, field)
+    for field in (
+        "handoff_manifest_sha256",
+        "signal_bundle_manifest_sha256",
+        "source_family_catalog_manifest_sha256",
+        "consumer_contract_registry_manifest_sha256",
+    ):
+        _required_sha256(payload, field)
+    if payload.get("ready_for_consumption") is not True:
+        raise ValueError("runtime consumption audit is not ready for consumption")
+    if payload.get("ready_for_runtime_injection") is not True:
+        raise ValueError("runtime consumption audit is not ready for injection")
+    if payload.get("runtime_injection_allowed") is not True:
+        raise ValueError("runtime consumption audit does not allow injection")
+    if payload.get("ready_for_research_consumption") is not False:
+        raise ValueError("runtime consumption audit is marked research-ready")
+    if int(payload.get("matched_source_family_count", 0)) <= 0:
+        raise ValueError("runtime consumption audit has no matched source family")
+
+
+def _validate_research_consumption_audit(payload: Mapping[str, Any]) -> None:
+    for field in (
+        "consumer",
+        "research_export_manifest_path",
+        "research_artifact_type",
+        "research_transform",
+        "research_as_of",
+        "handoff_manifest_path",
+        "source_family_catalog_manifest_path",
+        "consumer_contract_registry_manifest_path",
+    ):
+        _required_string(payload, field)
+    for field in (
+        "handoff_manifest_sha256",
+        "research_export_manifest_sha256",
+        "research_output_csv_sha256",
+        "source_family_catalog_manifest_sha256",
+        "consumer_contract_registry_manifest_sha256",
+    ):
+        _required_sha256(payload, field)
+    if payload.get("ready_for_consumption") is not True:
+        raise ValueError("research consumption audit is not ready for consumption")
+    if payload.get("ready_for_research_consumption") is not True:
+        raise ValueError("research consumption audit is not research-ready")
+    if payload.get("ready_for_runtime_injection") is not False:
+        raise ValueError("research consumption audit is runtime-ready")
+    if payload.get("runtime_injection_allowed") is not False:
+        raise ValueError("research consumption audit allows runtime injection")
+
+
+def _required_sha256(payload: Mapping[str, Any], field: str) -> str:
+    value = _required_string(payload, field)
+    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError(f"consumption audit invalid sha256 field: {field}")
+    return value
+
+
+def _reject_sensitive_keys(value: Any, *, path: str = "") -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            key_text = str(key)
+            normalized = key_text.lower()
+            if any(fragment in normalized for fragment in _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS):
+                raise ValueError(f"consumption audit contains forbidden key: {path}{key_text}")
+            _reject_sensitive_keys(item, path=f"{path}{key_text}.")
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            _reject_sensitive_keys(item, path=f"{path}{index}.")
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    return value
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

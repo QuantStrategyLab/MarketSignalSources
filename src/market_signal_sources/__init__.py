@@ -50,6 +50,14 @@ from .artifacts.research_handoff import (
     validate_research_signal_handoff_manifest,
     write_research_signal_handoff_manifest,
 )
+from .artifacts.consumption import (
+    MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION,
+    MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION,
+    audit_signal_consumption,
+    runtime_signal_injection_plan,
+    validate_consumption_audit_file,
+    write_consumption_audit_artifact,
+)
 from .artifacts.source_catalog import (
     SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
     SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
@@ -97,6 +105,8 @@ __all__ = [
     "MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION",
     "MARKET_SIGNAL_RESEARCH_HANDOFF_SCHEMA_VERSION",
+    "MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION",
+    "MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
@@ -111,6 +121,7 @@ __all__ = [
     "build_btc_cycle_indicator_frame",
     "build_ohlcv_quality_report",
     "consumer_contract_for",
+    "audit_signal_consumption",
     "compatible_profiles_for_signal_source_family",
     "consumer_contract_registry_payload",
     "compute_btc_cycle_indicators",
@@ -142,6 +153,7 @@ __all__ = [
     "validate_ohlcv_quality_report_file",
     "validate_platform_signal_handoff_index",
     "validate_platform_signal_handoff_manifest",
+    "validate_consumption_audit_file",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
     "write_signal_source_family_catalog",
@@ -151,8 +163,10 @@ __all__ = [
     "write_platform_signal_handoff_manifest",
     "write_research_export_manifest",
     "write_research_signal_handoff_manifest",
+    "write_consumption_audit_artifact",
     "write_signal_bundle_artifacts",
     "write_signal_bundle_publication_index",
     "upsert_signal_bundle_publication_index",
     "upsert_platform_signal_handoff_index",
+    "runtime_signal_injection_plan",
 ]
