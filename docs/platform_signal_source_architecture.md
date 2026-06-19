@@ -55,6 +55,9 @@ The platform-facing outputs are:
   selecting a handoff, consumer id, freshness policy, and saved deployment
   artifacts. This repository validates the shape and invalid combinations, but
   platforms own the file and rollout state.
+- `market_signal_runtime_adapter_deployment.v1`: validation summary proving a
+  platform-owned adapter config, saved consumption audit, and optional saved
+  runtime plan agree before startup injection.
 
 For offline strategy research, `research_export.v1` can also pin a
 `quality_report` file record. That keeps public or local context-source quality
@@ -159,7 +162,8 @@ only prove that a platform can safely map an already-published signal bundle int
 one canonical strategy input.
 Runtime adapter configuration, rollout approval, and enable/disable state remain
 platform-owned. This repository documents the required fields and validation
-semantics, but it does not decide whether an account should run a strategy.
+semantics, and can validate saved config/audit/plan consistency, but it does not
+decide whether an account should run a strategy.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

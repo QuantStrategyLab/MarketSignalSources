@@ -51,6 +51,7 @@ from market_signal_sources.artifacts.consumption import (
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_adapter_config,
+    validate_runtime_adapter_deployment_config_file,
     validate_runtime_signal_injection_plan_file,
     validate_runtime_signal_injection_plan_matches_audit,
     write_consumption_audit_artifact,
@@ -1986,6 +1987,29 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert cli_validate_adapter_config["sha256"] == _sha256(
         runtime_adapter_config_path
+    )
+    deployment_summary = validate_runtime_adapter_deployment_config_file(
+        runtime_adapter_config_path
+    )
+    assert deployment_summary["schema_version"] == (
+        "market_signal_runtime_adapter_deployment.v1"
+    )
+    assert deployment_summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert deployment_summary["runtime_plan_matched"] is True
+    validate_runtime_adapter_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(runtime_adapter_config_path),
+            "--pretty",
+        ]
+    )
+    assert validate_runtime_adapter_deployment_result == 0
+    cli_validate_adapter_deployment = json.loads(capsys.readouterr().out)
+    assert cli_validate_adapter_deployment["artifact_type"] == (
+        "market_signal_runtime_adapter_deployment_validation"
+    )
+    assert cli_validate_adapter_deployment["runtime_plan_sha256"] == (
+        cli_plan_artifact_summary["sha256"]
     )
     bad_runtime_adapter_config = {
         **runtime_adapter_config,

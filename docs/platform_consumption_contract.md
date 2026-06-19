@@ -222,7 +222,17 @@ Platform CI can validate that adapter config before it validates the handoff:
 python -m market_signal_sources.cli.audit_signal_consumption \
   --validate-runtime-adapter-config-json ./deploy/ibit_smart_dca.signal_adapter.json \
   --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-adapter-deployment-json ./deploy/ibit_smart_dca.signal_adapter.json \
+  --pretty
 ```
+
+The config validation only checks the platform-owned config shape and invalid
+combinations. The deployment validation also reads
+`saved_consumption_audit_json` and, when present, `saved_runtime_plan_json`; it
+confirms the config consumer, handoff source, `as_of`, accepted freshness, audit
+identity, and runtime plan match before startup injection.
 
 Required adapter config semantics:
 

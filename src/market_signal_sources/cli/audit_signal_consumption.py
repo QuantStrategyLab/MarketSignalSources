@@ -10,6 +10,7 @@ from market_signal_sources.artifacts.consumption import (
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_adapter_config_file,
+    validate_runtime_adapter_deployment_config_file,
     validate_runtime_signal_injection_plan_file,
     validate_runtime_signal_injection_plan_matches_audit,
     write_consumption_audit_artifact,
@@ -25,6 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         validation_modes = (
             args.validate_json,
             args.validate_runtime_adapter_config_json,
+            args.validate_runtime_adapter_deployment_json,
             args.validate_runtime_plan_json,
             args.validate_runtime_plan_with_audit,
         )
@@ -62,6 +64,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 payload = validate_runtime_adapter_config_file(
                     args.validate_runtime_adapter_config_json
+                )
+            elif args.validate_runtime_adapter_deployment_json is not None:
+                if args.audit_json is not None:
+                    raise ValueError(
+                        "--audit-json requires --validate-runtime-plan-with-audit"
+                    )
+                payload = validate_runtime_adapter_deployment_config_file(
+                    args.validate_runtime_adapter_deployment_json
                 )
             elif args.validate_runtime_plan_json is not None:
                 if args.audit_json is not None:
@@ -146,6 +156,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-runtime-adapter-config-json",
         help="Validate a saved market_signal_runtime_adapter_config.v1 JSON file.",
+    )
+    parser.add_argument(
+        "--validate-runtime-adapter-deployment-json",
+        help=(
+            "Validate a runtime adapter config and its saved deployment audit "
+            "and optional runtime plan artifacts."
+        ),
     )
     parser.add_argument(
         "--output-runtime-plan-json",

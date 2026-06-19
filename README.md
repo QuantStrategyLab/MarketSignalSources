@@ -333,6 +333,10 @@ resolving a handoff:
 python -m market_signal_sources.cli.audit_signal_consumption \
   --validate-runtime-adapter-config-json ./deploy/ibit_smart_dca.signal_adapter.json \
   --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-adapter-deployment-json ./deploy/ibit_smart_dca.signal_adapter.json \
+  --pretty
 ```
 
 For platform lookup across dated handoffs, publish a handoff index and validate

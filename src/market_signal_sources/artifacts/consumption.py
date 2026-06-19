@@ -25,11 +25,17 @@ MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION = (
 MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SCHEMA_VERSION = (
     "market_signal_runtime_adapter_config.v1"
 )
+MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SCHEMA_VERSION = (
+    "market_signal_runtime_adapter_deployment.v1"
+)
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
 _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
 _PLAN_AUDIT_MATCH_ARTIFACT_TYPE = "market_signal_runtime_plan_audit_match"
 _ADAPTER_CONFIG_VALIDATION_ARTIFACT_TYPE = (
     "market_signal_runtime_adapter_config_validation"
+)
+_ADAPTER_DEPLOYMENT_VALIDATION_ARTIFACT_TYPE = (
+    "market_signal_runtime_adapter_deployment_validation"
 )
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
@@ -244,6 +250,78 @@ def validate_runtime_adapter_config_file(
         "path": str(config_path),
         "sha256": _sha256_file(config_path),
         "size_bytes": config_path.stat().st_size,
+    }
+
+
+def validate_runtime_adapter_deployment_config_file(
+    path: str | PathLike[str],
+) -> dict[str, Any]:
+    """Validate runtime adapter config plus its saved deployment artifacts."""
+
+    config_path = Path(path)
+    payload = _load_json_mapping(
+        config_path,
+        artifact_name="runtime adapter config",
+    )
+    config_summary = validate_runtime_adapter_config(payload)
+    saved_audit = str(config_summary.get("saved_consumption_audit_json", "")).strip()
+    if not saved_audit:
+        raise ValueError(
+            "runtime adapter deployment requires saved_consumption_audit_json"
+        )
+    audit_path = _config_relative_path(config_path, saved_audit)
+    audit_summary = validate_consumption_audit_file(audit_path)
+    audit_payload = _load_json_mapping(
+        audit_path,
+        artifact_name="consumption audit",
+    )
+    if config_summary["consumer"] != audit_summary["consumer"]:
+        raise ValueError("runtime adapter deployment consumer mismatch")
+    if config_summary["handoff_source"] != audit_payload.get("handoff_source"):
+        raise ValueError("runtime adapter deployment handoff_source mismatch")
+    if config_summary.get("as_of") and config_summary["as_of"] != audit_payload.get("as_of"):
+        raise ValueError("runtime adapter deployment as_of mismatch")
+    if audit_payload.get("freshness_status") not in config_summary[
+        "accepted_freshness_statuses"
+    ]:
+        raise ValueError("runtime adapter deployment freshness_status mismatch")
+
+    saved_plan = str(config_summary.get("saved_runtime_plan_json", "")).strip()
+    plan_match_summary: dict[str, Any] | None = None
+    if saved_plan:
+        plan_path = _config_relative_path(config_path, saved_plan)
+        plan_match_summary = validate_runtime_signal_injection_plan_matches_audit(
+            plan_path,
+            audit_path,
+        )
+
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SCHEMA_VERSION,
+        "artifact_type": _ADAPTER_DEPLOYMENT_VALIDATION_ARTIFACT_TYPE,
+        "valid": True,
+        "config_path": str(config_path),
+        "config_sha256": _sha256_file(config_path),
+        "strategy": config_summary.get("strategy", ""),
+        "consumer": config_summary["consumer"],
+        "handoff_source": config_summary["handoff_source"],
+        "as_of": audit_payload["as_of"],
+        "freshness_status": audit_payload["freshness_status"],
+        "accepted_freshness_statuses": config_summary[
+            "accepted_freshness_statuses"
+        ],
+        "audit_path": str(audit_path),
+        "audit_sha256": audit_summary["sha256"],
+        "runtime_plan_matched": bool(plan_match_summary),
+        "runtime_plan_path": (
+            str(_config_relative_path(config_path, saved_plan))
+            if saved_plan
+            else ""
+        ),
+        "runtime_plan_sha256": (
+            str(plan_match_summary["plan_sha256"])
+            if plan_match_summary is not None
+            else ""
+        ),
     }
 
 
@@ -571,6 +649,13 @@ def _freshness_statuses_from_config(payload: Mapping[str, Any]) -> tuple[str, ..
             "runtime adapter config accepted_freshness_statuses must be non-empty"
         )
     return statuses
+
+
+def _config_relative_path(config_path: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return config_path.parent / path
 
 
 def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:
