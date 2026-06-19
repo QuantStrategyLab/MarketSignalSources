@@ -8,9 +8,13 @@ version = "0.1.0"
 description = "Artifact-first market signal source builders for QuantStrategyLab strategies"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {file = "LICENSE"}
 dependencies = [
   "pandas>=2.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/QuantStrategyLab/MarketSignalSources"
 
 [project.scripts]
 audit-signal-consumption = "market_signal_sources.cli.audit_signal_consumption:main"

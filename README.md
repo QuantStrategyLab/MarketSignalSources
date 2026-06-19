@@ -2,6 +2,32 @@
 
 Artifact-first market signal source builders for QuantStrategyLab strategy platforms.
 
+## Installation
+
+This package is intended to be consumed directly from GitHub by strategy and
+platform repositories. Pin production dependencies to an immutable commit SHA:
+
+```text
+market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@<commit-sha>
+```
+
+For local testing, install the current public branch:
+
+```bash
+python -m pip install "market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@main"
+```
+
+With `uv`:
+
+```bash
+uv add "market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@main"
+```
+
+Runtime platforms should treat this package as a signal artifact producer and
+contract validator. Broker execution repositories should consume the published
+JSON artifacts or pinned contract exports; they should not compute market
+signals inside broker adapters.
+
 This repository starts with a narrow MVP:
 
 - read local BTC daily OHLCV CSV
