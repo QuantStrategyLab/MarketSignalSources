@@ -145,6 +145,29 @@ market_data[audit["runtime_market_data_key"]] = bundle[
 ]
 ```
 
+Consumers using the Python API can ask this package to derive the same minimal
+plan after the audit succeeds:
+
+```python
+from market_signal_sources.artifacts.consumption import (
+    audit_signal_consumption,
+    runtime_signal_injection_plan,
+)
+
+audit = audit_signal_consumption(
+    platform_handoff_index="./data/output/platform_handoffs/index.json",
+    consumer="us_equity:ibit_smart_dca",
+    as_of="2026-06-19",
+    require_all_known_families=True,
+    require_all_known_consumers=True,
+)
+plan = runtime_signal_injection_plan(audit)
+market_data[plan["market_data_key"]] = bundle[plan["payload_field"]]
+```
+
+`runtime_signal_injection_plan()` rejects research handoff audits and any audit
+summary that is not explicitly marked runtime-injectable.
+
 Failure policy:
 
 - If audit validation fails, the platform must not enable the strategy run.

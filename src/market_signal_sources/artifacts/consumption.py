@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from os import PathLike
 from typing import Any
 
@@ -13,7 +13,11 @@ from .signal_bundle import CANONICAL_INPUT_DERIVED_INDICATORS, FRESHNESS_FRESH
 
 
 MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION = "market_signal_consumption_audit.v1"
+MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION = (
+    "market_signal_runtime_injection_plan.v1"
+)
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
+_INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
 
 
 def audit_signal_consumption(
@@ -85,6 +89,65 @@ def audit_signal_consumption(
         require_all_known_consumers=require_all_known_consumers,
     )
     return _research_consumption_audit(summary)
+
+
+def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the minimal platform injection plan from a runtime audit summary."""
+
+    if (
+        str(audit_summary.get("schema_version", ""))
+        != MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "runtime injection plan requires a market_signal_consumption_audit.v1 "
+            "summary"
+        )
+    if (
+        audit_summary.get("ready_for_runtime_injection") is not True
+        or audit_summary.get("runtime_injection_allowed") is not True
+    ):
+        raise ValueError("consumption audit is not runtime-injectable")
+    market_data_key = _required_string(audit_summary, "runtime_market_data_key")
+    payload_field = _required_string(audit_summary, "runtime_payload_field")
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION,
+        "artifact_type": _INJECTION_PLAN_ARTIFACT_TYPE,
+        "consumer": _required_string(audit_summary, "consumer"),
+        "injection_allowed": True,
+        "market_data_key": market_data_key,
+        "payload_field": payload_field,
+        "target_path": f"market_data.{market_data_key}",
+        "canonical_input": _required_string(audit_summary, "canonical_input"),
+        "bundle_id": _required_string(audit_summary, "bundle_id"),
+        "as_of": _required_string(audit_summary, "as_of"),
+        "freshness_status": _required_string(audit_summary, "freshness_status"),
+        "signal_bundle_manifest_path": _required_string(
+            audit_summary,
+            "signal_bundle_manifest_path",
+        ),
+        "signal_bundle_manifest_sha256": _required_string(
+            audit_summary,
+            "signal_bundle_manifest_sha256",
+        ),
+        "handoff_manifest_path": _required_string(
+            audit_summary,
+            "handoff_manifest_path",
+        ),
+        "handoff_manifest_sha256": _required_string(
+            audit_summary,
+            "handoff_manifest_sha256",
+        ),
+        "source_family_catalog_manifest_sha256": _required_string(
+            audit_summary,
+            "source_family_catalog_manifest_sha256",
+        ),
+        "consumer_contract_registry_manifest_sha256": _required_string(
+            audit_summary,
+            "consumer_contract_registry_manifest_sha256",
+        ),
+        "source_families": tuple(audit_summary.get("source_families", ())),
+        "consumer_contracts": tuple(audit_summary.get("consumer_contracts", ())),
+    }
 
 
 def _runtime_consumption_audit(
@@ -210,3 +273,10 @@ def _market_data_key_for_canonical_input(canonical_input: str) -> str:
     if canonical_input == CANONICAL_INPUT_DERIVED_INDICATORS:
         return "derived_indicators"
     return canonical_input
+
+
+def _required_string(payload: Mapping[str, Any], field: str) -> str:
+    value = str(payload.get(field, "")).strip()
+    if not value:
+        raise ValueError(f"consumption audit missing required field: {field}")
+    return value

@@ -45,7 +45,10 @@ from market_signal_sources.artifacts.consumer_contracts import (
     write_consumer_contract_registry,
     write_consumer_contract_registry_artifacts,
 )
-from market_signal_sources.artifacts.consumption import audit_signal_consumption
+from market_signal_sources.artifacts.consumption import (
+    audit_signal_consumption,
+    runtime_signal_injection_plan,
+)
 from market_signal_sources.artifacts.platform_handoff import (
     resolve_platform_signal_handoff_manifest_from_index,
     upsert_platform_signal_handoff_index,
@@ -1656,6 +1659,18 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert consumption_summary["runtime_payload_field"] == "derived_indicators"
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["consumer_contract_verified"] is True
+    injection_plan = runtime_signal_injection_plan(consumption_summary)
+    assert injection_plan["schema_version"] == (
+        "market_signal_runtime_injection_plan.v1"
+    )
+    assert injection_plan["artifact_type"] == "market_signal_runtime_injection_plan"
+    assert injection_plan["consumer"] == "us_equity:ibit_smart_dca"
+    assert injection_plan["market_data_key"] == "derived_indicators"
+    assert injection_plan["payload_field"] == "derived_indicators"
+    assert injection_plan["target_path"] == "market_data.derived_indicators"
+    assert injection_plan["signal_bundle_manifest_sha256"] == _sha256(
+        bundle_paths["manifest"]
+    )
 
     index_consumption_summary = audit_signal_consumption(
         platform_handoff_index=cli_index_path,
@@ -1852,6 +1867,8 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     )
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["summary_verified"] is True
+    with pytest.raises(ValueError, match="not runtime-injectable"):
+        runtime_signal_injection_plan(consumption_summary)
 
     audit_result = audit_consumption_main(
         [
