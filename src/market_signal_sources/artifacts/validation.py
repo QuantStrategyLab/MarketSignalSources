@@ -76,6 +76,7 @@ def validate_signal_bundle(
             f"unsupported signal bundle_type: {bundle.get('bundle_type')!r}"
         )
     canonical_input = _canonical_input(bundle)
+    _compatible_profiles(bundle)
     if canonical_input != expected_canonical_input:
         raise SignalBundleValidationError(
             "signal bundle canonical_input mismatch: "

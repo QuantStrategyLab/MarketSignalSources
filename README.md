@@ -84,6 +84,8 @@ downstream field coverage before publishing. For
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
 Plain manifest/index audit summaries also include `compatible_profiles`, so CI
 logs can show the allowed consumer set without printing signal values.
+Base bundle validation rejects missing, empty, or malformed `compatible_profiles`
+even when no target `--consumer` is supplied.
 
 Consumer field requirements are also exposed as a JSON registry so platform and
 strategy repositories can run drift checks without importing this package at

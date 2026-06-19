@@ -933,6 +933,19 @@ def test_validator_rejects_sensitive_fields() -> None:
         validate_signal_bundle(bundle)
 
 
+def test_validator_rejects_invalid_compatible_profiles() -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle["consumer_contract"]["compatible_profiles"] = []
+
+    with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
+        validate_signal_bundle(bundle)
+
+
 def test_validator_rejects_manifest_path_escape(tmp_path) -> None:
     bundle = build_btc_cycle_signal_bundle(
         _btc_frame(),
