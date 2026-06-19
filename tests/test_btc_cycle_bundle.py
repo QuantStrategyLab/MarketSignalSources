@@ -2057,6 +2057,36 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_adapter_deployment["runtime_plan_sha256"] == (
         cli_plan_artifact_summary["sha256"]
     )
+    drifted_audit = json.loads(cli_audit_artifact_path.read_text(encoding="utf-8"))
+    drifted_audit["bundle_id"] = "drifted-bundle-id"
+    drifted_audit_artifact_path = tmp_path / "drifted_consumption_audit.json"
+    drifted_audit_artifact_path.write_text(
+        json.dumps(drifted_audit, sort_keys=True),
+        encoding="utf-8",
+    )
+    drifted_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "saved_consumption_audit_json": str(drifted_audit_artifact_path),
+    }
+    drifted_runtime_adapter_config_path = (
+        tmp_path / "drifted_runtime_adapter_config.json"
+    )
+    drifted_runtime_adapter_config_path.write_text(
+        json.dumps(drifted_runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="current audit mismatch"):
+        validate_runtime_adapter_deployment_config_file(
+            drifted_runtime_adapter_config_path
+        )
+    drifted_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(drifted_runtime_adapter_config_path),
+        ]
+    )
+    assert drifted_deployment_result == 2
+    assert "current audit mismatch" in capsys.readouterr().err
     bad_handoff_runtime_adapter_config = {
         **runtime_adapter_config,
         "signal_handoff_index": str(tmp_path / "other_platform_handoff_index.json"),

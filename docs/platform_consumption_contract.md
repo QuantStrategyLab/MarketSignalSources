@@ -238,8 +238,10 @@ combinations. The config-set validation checks that runtime adapter configs do
 not duplicate a consumer and, when requested, cover every known runtime
 consumer. The deployment validation also reads
 `saved_consumption_audit_json` and, when present, `saved_runtime_plan_json`; it
-confirms the config consumer, handoff source, handoff path, `as_of`, accepted
-freshness, audit identity, and runtime plan match before startup injection.
+re-resolves the current handoff lookup and confirms the config consumer,
+handoff source, handoff path, selected audit identity, `as_of`, accepted
+freshness, saved audit identity, and runtime plan match before startup
+injection.
 
 Required adapter config semantics:
 
@@ -262,6 +264,7 @@ Invalid combinations should fail before strategy evaluation:
 - config-set validation is required to cover all known runtime consumers but a
   consumer is missing
 - configured handoff path does not match the saved consumption audit path
+- current handoff/index resolution no longer matches the saved consumption audit
 - `saved_runtime_plan_json` is used without a matching
   `saved_consumption_audit_json`
 

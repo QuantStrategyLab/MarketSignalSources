@@ -56,6 +56,23 @@ _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
         "token",
     }
 )
+_RUNTIME_AUDIT_IDENTITY_FIELDS = (
+    "handoff_source",
+    "consumer",
+    "canonical_input",
+    "bundle_id",
+    "as_of",
+    "freshness_status",
+    "runtime_market_data_key",
+    "runtime_payload_field",
+    "handoff_manifest_sha256",
+    "signal_bundle_manifest_sha256",
+    "source_family_catalog_manifest_sha256",
+    "consumer_contract_registry_manifest_sha256",
+    "source_families",
+    "matched_source_families",
+    "consumer_contracts",
+)
 
 
 def audit_signal_consumption(
@@ -349,6 +366,19 @@ def validate_runtime_adapter_deployment_config_file(
         "accepted_freshness_statuses"
     ]:
         raise ValueError("runtime adapter deployment freshness_status mismatch")
+    current_audit = _current_runtime_consumption_audit(
+        config_path=config_path,
+        config_summary=config_summary,
+    )
+    current_audit_mismatches = _runtime_audit_identity_mismatches(
+        saved_audit=audit_payload,
+        current_audit=current_audit,
+    )
+    if current_audit_mismatches:
+        raise ValueError(
+            "runtime adapter deployment current audit mismatch: "
+            + ", ".join(current_audit_mismatches)
+        )
 
     saved_plan = str(config_summary.get("saved_runtime_plan_json", "")).strip()
     plan_match_summary: dict[str, Any] | None = None
@@ -377,6 +407,13 @@ def validate_runtime_adapter_deployment_config_file(
         ],
         "audit_path": str(audit_path),
         "audit_sha256": audit_summary["sha256"],
+        "current_audit_matched": True,
+        "current_handoff_manifest_sha256": current_audit[
+            "handoff_manifest_sha256"
+        ],
+        "current_signal_bundle_manifest_sha256": current_audit[
+            "signal_bundle_manifest_sha256"
+        ],
         "runtime_plan_matched": bool(plan_match_summary),
         "runtime_plan_path": (
             str(_config_relative_path(config_path, saved_plan))
@@ -722,6 +759,61 @@ def _config_relative_path(config_path: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return config_path.parent / path
+
+
+def _current_runtime_consumption_audit(
+    *,
+    config_path: Path,
+    config_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    handoff_path = _config_relative_path(
+        config_path,
+        str(config_summary["handoff_path"]),
+    )
+    handoff_source = str(config_summary["handoff_source"])
+    if handoff_source == "platform_handoff_index":
+        return audit_signal_consumption(
+            consumer=str(config_summary["consumer"]),
+            platform_handoff_index=handoff_path,
+            as_of=str(config_summary.get("as_of", "")),
+            accepted_freshness_statuses=config_summary[
+                "accepted_freshness_statuses"
+            ],
+        )
+    if handoff_source == "platform_handoff_manifest":
+        return audit_signal_consumption(
+            consumer=str(config_summary["consumer"]),
+            platform_handoff_manifest=handoff_path,
+            accepted_freshness_statuses=config_summary[
+                "accepted_freshness_statuses"
+            ],
+        )
+    raise ValueError(f"unsupported runtime adapter handoff_source: {handoff_source}")
+
+
+def _runtime_audit_identity_mismatches(
+    *,
+    saved_audit: Mapping[str, Any],
+    current_audit: Mapping[str, Any],
+) -> tuple[str, ...]:
+    mismatches = [
+        field
+        for field in _RUNTIME_AUDIT_IDENTITY_FIELDS
+        if _normalized_identity_value(saved_audit.get(field))
+        != _normalized_identity_value(current_audit.get(field))
+    ]
+    return tuple(mismatches)
+
+
+def _normalized_identity_value(value: object) -> object:
+    if isinstance(value, list | tuple):
+        return tuple(_normalized_identity_value(item) for item in value)
+    if isinstance(value, Mapping):
+        return tuple(
+            (str(key), _normalized_identity_value(nested))
+            for key, nested in sorted(value.items())
+        )
+    return value
 
 
 def _known_runtime_signal_consumers() -> tuple[str, ...]:
