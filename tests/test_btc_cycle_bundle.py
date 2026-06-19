@@ -1641,6 +1641,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert summary["consumer_contract_count"] == 8
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
+    assert summary["local_contract_registry_verified"] is True
+    assert summary["canonical_registry_payload_sha256"] == summary[
+        "local_registry_payload_sha256"
+    ]
     assert summary["all_runtime_consumers_covered"] is True
     assert summary["signal_bundle_manifest_sha256"] == _sha256(
         bundle_paths["manifest"]
@@ -1655,6 +1659,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert validation_summary["sha256"] == _sha256(handoff_path)
     assert validation_summary["all_runtime_consumers_covered"] is True
+    assert validation_summary["local_contract_registry_verified"] is True
 
     cli_handoff_path = tmp_path / "cli_platform_handoff.json"
     result = handoff_main(
@@ -1680,6 +1685,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_summary["path"] == str(cli_handoff_path)
     assert cli_summary["sha256"] == _sha256(cli_handoff_path)
     assert cli_summary["all_runtime_consumers_covered"] is True
+    assert cli_summary["local_contract_registry_verified"] is True
 
     validate_result = handoff_main(
         [
@@ -1697,6 +1703,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["sha256"] == _sha256(cli_handoff_path)
     assert cli_validate_summary["all_runtime_consumers_covered"] is True
+    assert cli_validate_summary["local_contract_registry_verified"] is True
 
     index_path = tmp_path / "platform_handoff_index.json"
     index_summary = write_platform_signal_handoff_index(
@@ -1717,6 +1724,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert index_summary["all_runtime_consumers_covered"] is True
     index_payload = json.loads(index_path.read_text(encoding="utf-8"))
     assert index_payload["handoffs"][0]["all_runtime_consumers_covered"] is True
+    assert index_payload["handoffs"][0]["local_contract_registry_verified"] is True
     assert resolve_platform_signal_handoff_manifest_from_index(
         index_path,
         consumer="us_equity:ibit_smart_dca",
@@ -1745,6 +1753,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         cli_handoff_path
     )
     assert validation_index_summary["all_runtime_consumers_covered"] is True
+    assert validation_index_summary["local_contract_registry_verified"] is True
 
     cli_index_path = tmp_path / "cli_platform_handoff_index.json"
     index_result = handoff_main(
@@ -1811,6 +1820,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert consumption_summary["matched_source_family_count"] == 1
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["consumer_contract_verified"] is True
+    assert consumption_summary["local_contract_registry_verified"] is True
+    assert consumption_summary["canonical_registry_payload_sha256"] == (
+        consumption_summary["local_registry_payload_sha256"]
+    )
     assert consumption_summary["all_runtime_consumers_covered"] is True
     audit_artifact_path = tmp_path / "consumption_audit.json"
     audit_artifact_summary = write_consumption_audit_artifact(
@@ -1823,8 +1836,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert audit_artifact_summary["consumption_mode"] == "runtime_platform"
     assert audit_artifact_summary["consumer"] == "us_equity:ibit_smart_dca"
     assert audit_artifact_summary["all_runtime_consumers_covered"] is True
+    assert audit_artifact_summary["local_contract_registry_verified"] is True
     validated_audit_artifact = validate_consumption_audit_file(audit_artifact_path)
     assert validated_audit_artifact["sha256"] == audit_artifact_summary["sha256"]
+    assert validated_audit_artifact["local_contract_registry_verified"] is True
     bad_audit = json.loads(audit_artifact_path.read_text(encoding="utf-8"))
     bad_audit["api_token"] = "redacted"
     bad_audit_path = tmp_path / "bad_consumption_audit.json"
@@ -1846,6 +1861,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert injection_plan["signal_bundle_manifest_sha256"] == _sha256(
         bundle_paths["manifest"]
     )
+    assert injection_plan["local_contract_registry_verified"] is True
+    assert injection_plan["canonical_registry_payload_sha256"] == (
+        injection_plan["local_registry_payload_sha256"]
+    )
     injection_plan_path = tmp_path / "runtime_injection_plan.json"
     injection_plan_artifact_summary = write_runtime_signal_injection_plan_artifact(
         injection_plan_path,
@@ -1855,6 +1874,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "market_signal_runtime_injection_plan.v1"
     )
     assert injection_plan_artifact_summary["market_data_key"] == "derived_indicators"
+    assert injection_plan_artifact_summary["local_contract_registry_verified"] is True
     assert validate_runtime_signal_injection_plan_file(injection_plan_path)[
         "sha256"
     ] == injection_plan_artifact_summary["sha256"]
@@ -1864,6 +1884,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert plan_audit_match["matched"] is True
     assert plan_audit_match["consumer"] == "us_equity:ibit_smart_dca"
+    assert plan_audit_match["local_contract_registry_verified"] is True
 
     index_consumption_summary = audit_signal_consumption(
         platform_handoff_index=cli_index_path,
@@ -1880,6 +1901,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert index_consumption_summary["handoff_manifest_sha256"] == _sha256(
         handoff_path
     )
+    assert index_consumption_summary["local_contract_registry_verified"] is True
 
     audit_result = audit_consumption_main(
         [
@@ -2525,6 +2547,10 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
     assert summary["consumer_contracts"] == (
         "research:nasdaq_sp500_cape_vix_external_context_precomputed",
     )
+    assert summary["local_contract_registry_verified"] is True
+    assert summary["canonical_registry_payload_sha256"] == summary[
+        "local_registry_payload_sha256"
+    ]
     assert summary["summary_verified"] is True
 
     validation_summary = validate_research_signal_handoff_manifest(
@@ -2532,6 +2558,7 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
         consumer="research:nasdaq_sp500_cape_vix_external_context_precomputed",
     )
     assert validation_summary["sha256"] == _sha256(handoff_path)
+    assert validation_summary["local_contract_registry_verified"] is True
 
     cli_handoff_path = tmp_path / "cli_research_handoff.json"
     write_result = research_handoff_main(

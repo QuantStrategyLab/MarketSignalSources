@@ -149,7 +149,8 @@ credential paths, or service lifecycle ownership.
    strategy still fails before release.
 11. CI or release automation writes `market_signal_consumption_audit.v1` for the
    target consumer. Runtime startup validates that saved audit before enabling
-   the strategy.
+   the strategy. The audit must preserve the consumer registry payload digests
+   and `local_contract_registry_verified=true` from the handoff validation.
 12. If the platform wants a small runtime-only handoff, derive and persist
    `market_signal_runtime_injection_plan.v1` from the audit, then validate it
    together with the saved audit through

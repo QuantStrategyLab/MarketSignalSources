@@ -257,6 +257,15 @@ def _research_handoff_manifest(
         "all_known_consumers_present": consumer_registry_summary[
             "all_known_consumers_present"
         ],
+        "canonical_registry_payload_sha256": consumer_registry_summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": consumer_registry_summary[
+            "local_registry_payload_sha256"
+        ],
+        "local_contract_registry_verified": consumer_registry_summary[
+            "local_contract_registry_verified"
+        ],
     }
 
 
@@ -317,6 +326,15 @@ def _research_handoff_summary(
         "consumer_contract_count": consumer_registry_summary["consumer_count"],
         "all_known_consumers_present": consumer_registry_summary[
             "all_known_consumers_present"
+        ],
+        "canonical_registry_payload_sha256": consumer_registry_summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": consumer_registry_summary[
+            "local_registry_payload_sha256"
+        ],
+        "local_contract_registry_verified": consumer_registry_summary[
+            "local_contract_registry_verified"
         ],
         "summary_verified": True,
         "payload_consumer": str(payload.get("consumer", "")),
@@ -478,6 +496,11 @@ def _validate_summary_consistency(
             )
     optional_expected_values = {
         "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
     }
     for field, expected in optional_expected_values.items():
         if field in payload and payload.get(field) != expected:

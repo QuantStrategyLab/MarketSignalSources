@@ -437,6 +437,11 @@ def _platform_handoff_index_entry(
             "all_consumer_contracts_satisfied"
         ],
         "all_known_consumers_present": summary["all_known_consumers_present"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
         "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
     }
 
@@ -593,6 +598,11 @@ def _validate_index_entry_summary_consistency(
         "matched_source_families": list(summary["matched_source_families"]),
         "matched_source_family_count": summary["matched_source_family_count"],
         "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
     }
     for field, expected in optional_expected_values.items():
         if field in entry and entry.get(field) != expected:
@@ -697,6 +707,15 @@ def _platform_handoff_manifest(
         "all_known_consumers_present": consumer_registry_summary[
             "all_known_consumers_present"
         ],
+        "canonical_registry_payload_sha256": consumer_registry_summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": consumer_registry_summary[
+            "local_registry_payload_sha256"
+        ],
+        "local_contract_registry_verified": consumer_registry_summary[
+            "local_contract_registry_verified"
+        ],
     }
 
 
@@ -749,6 +768,15 @@ def _platform_handoff_summary(
         "consumer_contracts": consumer_registry_summary["consumers"],
         "all_known_consumers_present": consumer_registry_summary[
             "all_known_consumers_present"
+        ],
+        "canonical_registry_payload_sha256": consumer_registry_summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": consumer_registry_summary[
+            "local_registry_payload_sha256"
+        ],
+        "local_contract_registry_verified": consumer_registry_summary[
+            "local_contract_registry_verified"
         ],
     }
 
@@ -1018,6 +1046,11 @@ def _validate_summary_consistency(
         "matched_source_family_count": summary["matched_source_family_count"],
         "matched_source_families": list(summary["matched_source_families"]),
         "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
     }
     for field, expected in optional_expected_values.items():
         if field in payload and payload.get(field) != expected:

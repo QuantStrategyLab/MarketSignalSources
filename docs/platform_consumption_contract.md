@@ -168,10 +168,15 @@ deployment identity.
 
 For runtime handoffs, the audit summary must show
 `ready_for_runtime_injection=true`, `runtime_injection_allowed=true`,
-`all_runtime_consumers_covered=true`, and the expected
+`all_runtime_consumers_covered=true`, `local_contract_registry_verified=true`,
+and the expected
 `runtime_market_data_key`, such as `derived_indicators`.
 It also includes `matched_source_families`, which records the exact source
 family or families that matched the runtime bundle and consumer.
+The audit and derived runtime injection plan also carry
+`canonical_registry_payload_sha256` and `local_registry_payload_sha256`, so a
+saved deployment can detect consumer-contract drift without re-reading the
+registry JSON first.
 For index lookups, `lookup_as_of` records the requested selection date while
 `as_of` remains the selected handoff or bundle date; these can differ when the
 latest valid handoff is earlier than the strategy evaluation date.
@@ -321,8 +326,8 @@ market_data[plan["market_data_key"]] = bundle[plan["payload_field"]]
 summary that is not explicitly marked runtime-injectable.
 For saved artifacts, `validate_runtime_signal_injection_plan_matches_audit()`
 checks that the runtime plan still matches the exact audit identity, bundle,
-manifest hashes, source families, consumer contracts, and payload path before
-deployment consumes it.
+manifest hashes, source families, consumer contracts, registry payload digests,
+and payload path before deployment consumes it.
 
 Failure policy:
 

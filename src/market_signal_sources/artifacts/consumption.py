@@ -75,6 +75,9 @@ _RUNTIME_AUDIT_IDENTITY_FIELDS = (
     "signal_bundle_manifest_sha256",
     "source_family_catalog_manifest_sha256",
     "consumer_contract_registry_manifest_sha256",
+    "canonical_registry_payload_sha256",
+    "local_registry_payload_sha256",
+    "local_contract_registry_verified",
     "source_families",
     "matched_source_families",
     "consumer_contracts",
@@ -176,7 +179,7 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
         raise ValueError("consumption audit is not runtime-injectable")
     market_data_key = _required_string(audit_summary, "runtime_market_data_key")
     payload_field = _required_string(audit_summary, "runtime_payload_field")
-    return {
+    plan = {
         "schema_version": MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION,
         "artifact_type": _INJECTION_PLAN_ARTIFACT_TYPE,
         "consumer": _required_string(audit_summary, "consumer"),
@@ -218,6 +221,14 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
         ),
         "consumer_contracts": tuple(audit_summary.get("consumer_contracts", ())),
     }
+    for field in (
+        "canonical_registry_payload_sha256",
+        "local_registry_payload_sha256",
+        "local_contract_registry_verified",
+    ):
+        if field in audit_summary:
+            plan[field] = audit_summary[field]
+    return plan
 
 
 def validate_runtime_adapter_config(
@@ -516,7 +527,7 @@ def validate_runtime_signal_injection_plan_file(
     if not isinstance(payload, Mapping):
         raise ValueError("runtime injection plan artifact must be a JSON object")
     _validate_runtime_injection_plan_payload(payload)
-    return {
+    summary = {
         "path": str(plan_path),
         "schema_version": payload["schema_version"],
         "artifact_type": payload["artifact_type"],
@@ -532,6 +543,14 @@ def validate_runtime_signal_injection_plan_file(
         "sha256": _sha256_file(plan_path),
         "size_bytes": plan_path.stat().st_size,
     }
+    for field in (
+        "canonical_registry_payload_sha256",
+        "local_registry_payload_sha256",
+        "local_contract_registry_verified",
+    ):
+        if field in payload:
+            summary[field] = payload[field]
+    return summary
 
 
 def validate_runtime_signal_injection_plan_matches_audit(
@@ -563,7 +582,7 @@ def validate_runtime_signal_injection_plan_matches_audit(
                 "runtime injection plan audit mismatch: "
                 f"{plan_field}!={audit_field}"
             )
-    return {
+    summary = {
         "schema_version": MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION,
         "artifact_type": _PLAN_AUDIT_MATCH_ARTIFACT_TYPE,
         "matched": True,
@@ -580,6 +599,14 @@ def validate_runtime_signal_injection_plan_matches_audit(
         "as_of": plan_summary["as_of"],
         "freshness_status": plan_summary["freshness_status"],
     }
+    for field in (
+        "canonical_registry_payload_sha256",
+        "local_registry_payload_sha256",
+        "local_contract_registry_verified",
+    ):
+        if field in plan_summary:
+            summary[field] = plan_summary[field]
+    return summary
 
 
 def write_consumption_audit_artifact(
@@ -609,7 +636,7 @@ def validate_consumption_audit_file(
     if not isinstance(payload, Mapping):
         raise ValueError("consumption audit artifact must be a JSON object")
     _validate_consumption_audit_payload(payload)
-    return {
+    summary = {
         "path": str(audit_path),
         "schema_version": payload["schema_version"],
         "artifact_type": payload["artifact_type"],
@@ -631,6 +658,14 @@ def validate_consumption_audit_file(
         "sha256": _sha256_file(audit_path),
         "size_bytes": audit_path.stat().st_size,
     }
+    for field in (
+        "canonical_registry_payload_sha256",
+        "local_registry_payload_sha256",
+        "local_contract_registry_verified",
+    ):
+        if field in payload:
+            summary[field] = payload[field]
+    return summary
 
 
 def _runtime_consumption_audit(
@@ -697,6 +732,11 @@ def _runtime_consumption_audit(
         "consumer_contract_count": summary["consumer_contract_count"],
         "consumer_contracts": summary["consumer_contracts"],
         "all_known_consumers_present": summary["all_known_consumers_present"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
         "linked_manifest_sha256s_verified": True,
         "consumer_contract_verified": True,
         "source_catalog_verified": True,
@@ -755,6 +795,11 @@ def _research_consumption_audit(summary: dict[str, Any]) -> dict[str, Any]:
         "consumer_contract_count": summary["consumer_contract_count"],
         "consumer_contracts": summary["consumer_contracts"],
         "all_known_consumers_present": summary["all_known_consumers_present"],
+        "canonical_registry_payload_sha256": summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": summary["local_registry_payload_sha256"],
+        "local_contract_registry_verified": summary["local_contract_registry_verified"],
         "linked_manifest_sha256s_verified": True,
         "consumer_contract_verified": True,
         "source_catalog_verified": True,
@@ -786,6 +831,12 @@ _PLAN_AUDIT_MATCH_FIELDS = (
         "consumer_contract_registry_manifest_sha256",
         "consumer_contract_registry_manifest_sha256",
     ),
+    (
+        "canonical_registry_payload_sha256",
+        "canonical_registry_payload_sha256",
+    ),
+    ("local_registry_payload_sha256", "local_registry_payload_sha256"),
+    ("local_contract_registry_verified", "local_contract_registry_verified"),
     ("market_data_key", "runtime_market_data_key"),
     ("payload_field", "runtime_payload_field"),
     ("source_families", "source_families"),
@@ -936,6 +987,7 @@ def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:
         raise ValueError("consumption audit consumer contract is not verified")
     if payload.get("source_catalog_verified") is not True:
         raise ValueError("consumption audit source catalog is not verified")
+    _validate_optional_registry_verification_fields(payload)
 
 
 def _validate_runtime_injection_plan_payload(payload: Mapping[str, Any]) -> None:
@@ -972,6 +1024,7 @@ def _validate_runtime_injection_plan_payload(payload: Mapping[str, Any]) -> None
     expected_target_path = f"market_data.{_required_string(payload, 'market_data_key')}"
     if payload.get("target_path") != expected_target_path:
         raise ValueError("runtime injection plan target_path mismatch")
+    _validate_optional_registry_verification_fields(payload)
 
 
 def _validate_runtime_consumption_audit(payload: Mapping[str, Any]) -> None:
@@ -1057,6 +1110,22 @@ def _required_sha256(payload: Mapping[str, Any], field: str) -> str:
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise ValueError(f"consumption audit invalid sha256 field: {field}")
     return value
+
+
+def _validate_optional_registry_verification_fields(
+    payload: Mapping[str, Any],
+) -> None:
+    fields = (
+        "canonical_registry_payload_sha256",
+        "local_registry_payload_sha256",
+        "local_contract_registry_verified",
+    )
+    if not any(field in payload for field in fields):
+        return
+    _required_sha256(payload, "canonical_registry_payload_sha256")
+    _required_sha256(payload, "local_registry_payload_sha256")
+    if payload.get("local_contract_registry_verified") is not True:
+        raise ValueError("local consumer contract registry is not verified")
 
 
 def _load_json_mapping(path: Path, *, artifact_name: str) -> dict[str, Any]:
