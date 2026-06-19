@@ -35,6 +35,13 @@ from .artifacts.quality_report import (
     write_ohlcv_quality_report,
 )
 from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
+from .artifacts.source_catalog import (
+    SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
+    compatible_profiles_for_signal_source_family,
+    known_signal_source_families,
+    signal_source_family_catalog_payload,
+    signal_source_family_record,
+)
 from .artifacts.validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
     SignalBundleValidationError,
@@ -66,6 +73,7 @@ __all__ = [
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
+    "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
     "QUALITY_REPORT_SCHEMA_VERSION",
     "CONSUMER_REQUIRED_INDICATOR_FIELDS",
     "REQUIRED_INDICATOR_FIELDS_BY_CONSUMER",
@@ -77,9 +85,13 @@ __all__ = [
     "build_btc_cycle_indicator_frame",
     "build_ohlcv_quality_report",
     "consumer_contract_for",
+    "compatible_profiles_for_signal_source_family",
     "consumer_contract_registry_payload",
     "compute_btc_cycle_indicators",
     "known_signal_consumers",
+    "known_signal_source_families",
+    "signal_source_family_catalog_payload",
+    "signal_source_family_record",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",

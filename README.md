@@ -157,6 +157,13 @@ Validation rejects schema drift, unknown consumers, duplicate fields, and
 missing known consumers, plus forbidden sensitive key names such as token,
 secret, cookie, or signed URL.
 
+The package also exposes a small signal source family catalog through
+`signal_source_family_catalog_payload()`. The catalog records stable family-level
+metadata such as `crypto.btc_cycle_daily`'s canonical input, transform, freshness
+policy, produced fields, and compatible consumer profiles. It is intended for CI
+and release checks before adding more US equity, Hong Kong equity, or crypto
+families.
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash

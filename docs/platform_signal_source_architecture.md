@@ -29,6 +29,8 @@ The platform-facing outputs are:
 - `market_signal_consumer_contracts.v1`: required fields by downstream consumer.
 - `market_signal_consumer_contract_manifest.v1`: manifest for the consumer
   registry itself.
+- `market_signal_source_families.v1`: family-level catalog for canonical input,
+  transform, freshness policy, produced fields, and compatible consumers.
 
 ## Design Pressure
 
@@ -121,6 +123,9 @@ Each new family should define:
 - minimum history and freshness window
 - consumer contract entries
 - validation tests for manifest, contract coverage, and sensitive-field rejection
+
+The family catalog should be updated before runtime consumers are added. It is a
+small compatibility map, not a provider registry or live service definition.
 
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`

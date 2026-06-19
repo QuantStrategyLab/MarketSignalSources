@@ -15,6 +15,12 @@ from market_signal_sources.artifacts.signal_bundle import (
     write_signal_bundle_artifacts,
     write_signal_bundle_publication_index,
 )
+from market_signal_sources.artifacts.source_catalog import (
+    compatible_profiles_for_signal_source_family,
+    known_signal_source_families,
+    signal_source_family_catalog_payload,
+    signal_source_family_record,
+)
 from market_signal_sources.artifacts.quality_report import (
     QualityReportValidationError,
     build_ohlcv_quality_report,
@@ -329,6 +335,35 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     )
     with pytest.raises(SignalBundleValidationError, match="quality_report_sha256"):
         validate_signal_bundle_manifest(paths["manifest"])
+
+
+def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    record = signal_source_family_record("crypto.btc_cycle_daily")
+    catalog = signal_source_family_catalog_payload()
+
+    assert known_signal_source_families() == ("crypto.btc_cycle_daily",)
+    assert catalog["schema_version"] == "market_signal_source_families.v1"
+    assert catalog["families"] == [record]
+    assert record["domain"] == "crypto"
+    assert record["canonical_input"] == "derived_indicators"
+    assert record["transform"] == bundle["provenance"]["transform"]
+    assert record["freshness_policy"] == bundle["freshness"]["policy"]
+    assert record["compatible_profiles"] == bundle["consumer_contract"][
+        "compatible_profiles"
+    ]
+    assert compatible_profiles_for_signal_source_family(
+        "crypto.btc_cycle_daily"
+    ) == tuple(bundle["consumer_contract"]["compatible_profiles"])
+    assert set(record["derived_indicator_fields"]) == set(
+        bundle["derived_indicators"]["BTC-USD"]
+    )
+    assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
 
 
 def test_signal_bundle_publication_index_upserts_manifest_tree(tmp_path) -> None:

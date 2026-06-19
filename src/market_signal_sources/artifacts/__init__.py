@@ -35,6 +35,13 @@ from .quality_report import (
     write_ohlcv_quality_report,
 )
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
+from .source_catalog import (
+    SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
+    compatible_profiles_for_signal_source_family,
+    known_signal_source_families,
+    signal_source_family_catalog_payload,
+    signal_source_family_record,
+)
 from .validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
     SignalBundleValidationError,
@@ -60,6 +67,7 @@ __all__ = [
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
+    "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
     "QUALITY_REPORT_SCHEMA_VERSION",
     "CONSUMER_REQUIRED_INDICATOR_FIELDS",
     "REQUIRED_INDICATOR_FIELDS_BY_CONSUMER",
@@ -70,8 +78,12 @@ __all__ = [
     "build_derived_indicator_signal_bundle",
     "build_ohlcv_quality_report",
     "consumer_contract_for",
+    "compatible_profiles_for_signal_source_family",
     "consumer_contract_registry_payload",
+    "known_signal_source_families",
     "known_signal_consumers",
+    "signal_source_family_catalog_payload",
+    "signal_source_family_record",
     "validate_consumer_contract_registry",
     "validate_consumer_contract_registry_file",
     "validate_consumer_contract_registry_manifest",
