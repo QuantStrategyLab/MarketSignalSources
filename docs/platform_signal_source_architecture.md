@@ -96,9 +96,11 @@ credential paths, or service lifecycle ownership.
    `research:ibit_btc_ahr999_mayer_precomputed_variants`.
    The manifest and index also carry `compatible_profiles`, and validation
    rejects profile drift across index, manifest, and bundle.
-7. Publish the consumer contract registry with its manifest.
-8. Strategy CI validates both the signal manifest and the consumer contract
-   registry before allowing a strategy config to reference the artifact.
+7. Publish the source family catalog and the consumer contract registry with
+   their manifests.
+8. Strategy CI validates the signal manifest, source family catalog manifest,
+   and consumer contract registry manifest before allowing a strategy config to
+   reference the artifact.
 9. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.

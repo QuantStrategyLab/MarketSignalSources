@@ -156,6 +156,8 @@ python -m market_signal_sources.cli.list_consumer_contracts \
 Validation rejects schema drift, unknown consumers, duplicate fields, and
 missing known consumers, plus forbidden sensitive key names such as token,
 secret, cookie, or signed URL.
+For platform handoff, publish and validate this manifest together with the
+source family catalog manifest below.
 
 The package also exposes a small signal source family catalog through
 `signal_source_family_catalog_payload()`. The catalog records stable family-level
