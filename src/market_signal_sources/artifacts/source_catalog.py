@@ -58,6 +58,52 @@ BTC_CYCLE_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "research:ibit_btc_ahr999_mayer_precomputed_variants",
 )
 
+SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
+    "crypto": {
+        "implemented_families": ("crypto.btc_cycle_daily",),
+        "planned_families": (
+            "crypto.live_pool_feature_catalog",
+            "crypto.market_structure_daily",
+        ),
+        "canonical_inputs": (
+            "derived_indicators",
+            "market_prices",
+            "benchmark_snapshot",
+            "universe_snapshot",
+        ),
+        "provider_boundary": (
+            "Crypto market-data, exchange, and on-chain providers stay in "
+            "MarketSignalSources or upstream crypto pipelines; strategy repos "
+            "consume artifacts only."
+        ),
+    },
+    "us_equity": {
+        "implemented_families": (),
+        "planned_families": (
+            "us_equity.index_breadth_daily",
+            "us_equity.valuation_macro_context",
+            "us_equity.volatility_rates_context",
+        ),
+        "canonical_inputs": ("derived_indicators", "research_export"),
+        "provider_boundary": (
+            "US equity breadth, valuation, volatility, and macro providers are "
+            "published as source artifacts before strategy runtime consumption."
+        ),
+    },
+    "hk_equity": {
+        "implemented_families": (),
+        "planned_families": (
+            "hk_equity.index_breadth_daily",
+            "hk_equity.fx_liquidity_context",
+        ),
+        "canonical_inputs": ("derived_indicators", "research_export"),
+        "provider_boundary": (
+            "Hong Kong equity, HKD/USD, and local calendar source adapters stay "
+            "outside strategy repos until a hash-pinned artifact contract exists."
+        ),
+    },
+}
+
 SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
     "crypto.btc_cycle_daily": {
         "family": "crypto.btc_cycle_daily",
@@ -111,6 +157,12 @@ def signal_source_family_consumer_contract_coverage(family: str) -> dict[str, An
     return _consumer_contract_coverage_summary(signal_source_family_record(family))
 
 
+def signal_source_domain_coverage_payload() -> dict[str, Any]:
+    """Return the cross-market source-family roadmap in JSON-safe form."""
+
+    return _json_safe_value(SIGNAL_SOURCE_DOMAIN_COVERAGE)
+
+
 def signal_source_family_catalog_payload(
     *,
     families: Iterable[str] | None = None,
@@ -124,6 +176,7 @@ def signal_source_family_catalog_payload(
     )
     return {
         "schema_version": SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
+        "domain_coverage": signal_source_domain_coverage_payload(),
         "families": [
             signal_source_family_record(family)
             for family in selected_families
@@ -228,6 +281,9 @@ def validate_signal_source_family_catalog(
             raise ValueError(f"signal source family record drift: {family}")
         coverage_by_family[family] = _consumer_contract_coverage_summary(record)
 
+    domain_coverage_summary = _validate_domain_coverage(
+        payload.get("domain_coverage")
+    )
     missing_known_families = sorted(set(SIGNAL_SOURCE_FAMILIES) - set(family_names))
     if require_all_known_families and missing_known_families:
         raise ValueError(
@@ -242,6 +298,7 @@ def validate_signal_source_family_catalog(
         "known_family_count": len(SIGNAL_SOURCE_FAMILIES),
         "missing_known_families": missing_known_families,
         "all_known_families_present": not missing_known_families,
+        **domain_coverage_summary,
         "consumer_contract_coverage": coverage_by_family,
         "all_consumer_contracts_satisfied": all(
             bool(summary["all_required_fields_present"])
@@ -304,13 +361,18 @@ def validate_signal_source_family_catalog_file(
 
 
 def _json_safe_record(record: dict[str, object]) -> dict[str, Any]:
-    safe: dict[str, Any] = {}
-    for key, value in record.items():
-        if isinstance(value, tuple):
-            safe[key] = list(value)
-        else:
-            safe[key] = value
-    return safe
+    return _json_safe_value(record)
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_safe_value(nested)
+            for key, nested in value.items()
+        }
+    if isinstance(value, tuple | list):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 def _source_catalog_manifest(
@@ -358,6 +420,11 @@ def _source_catalog_manifest_summary(
         "known_family_count": catalog_summary["known_family_count"],
         "missing_known_families": catalog_summary["missing_known_families"],
         "all_known_families_present": catalog_summary["all_known_families_present"],
+        "domain_coverage_present": catalog_summary["domain_coverage_present"],
+        "domains": catalog_summary["domains"],
+        "domain_count": catalog_summary["domain_count"],
+        "implemented_family_count": catalog_summary["implemented_family_count"],
+        "planned_family_count": catalog_summary["planned_family_count"],
         "all_consumer_contracts_satisfied": catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
@@ -463,6 +530,108 @@ def _validate_source_catalog_manifest_consistency(
             )
 
 
+def _validate_domain_coverage(value: object) -> dict[str, Any]:
+    if value is None:
+        return {
+            "domain_coverage_present": False,
+            "domains": [],
+            "domain_count": 0,
+            "implemented_family_count": 0,
+            "planned_family_count": 0,
+        }
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(
+            "signal source family catalog domain_coverage must be an object"
+        )
+
+    expected = signal_source_domain_coverage_payload()
+    if value != expected:
+        raise ValueError("signal source family catalog domain_coverage drift")
+
+    implemented_families: list[str] = []
+    planned_families: list[str] = []
+    for domain, record in value.items():
+        normalized_domain = str(domain).strip()
+        if not normalized_domain:
+            raise ValueError("signal source family catalog domain must not be empty")
+        if not isinstance(record, Mapping):
+            raise ValueError(
+                "signal source family catalog domain_coverage records must be objects"
+            )
+        implemented = _normalized_sequence(
+            record.get("implemented_families"),
+            field="implemented_families",
+            family=normalized_domain,
+            allow_empty=True,
+        )
+        planned = _normalized_sequence(
+            record.get("planned_families"),
+            field="planned_families",
+            family=normalized_domain,
+            allow_empty=True,
+        )
+        _normalized_sequence(
+            record.get("canonical_inputs"),
+            field="canonical_inputs",
+            family=normalized_domain,
+        )
+        provider_boundary = str(record.get("provider_boundary", "")).strip()
+        if not provider_boundary:
+            raise ValueError(
+                "signal source family catalog "
+                f"{normalized_domain} provider_boundary is required"
+            )
+        implemented_families.extend(implemented)
+        planned_families.extend(planned)
+
+    duplicate_implemented = _duplicate_values(implemented_families)
+    if duplicate_implemented:
+        raise ValueError(
+            "signal source family catalog domain_coverage duplicates "
+            "implemented families: "
+            + ", ".join(duplicate_implemented)
+        )
+    duplicate_planned = _duplicate_values(planned_families)
+    if duplicate_planned:
+        raise ValueError(
+            "signal source family catalog domain_coverage duplicates "
+            "planned families: "
+            + ", ".join(duplicate_planned)
+        )
+
+    implemented_set = set(implemented_families)
+    planned_set = set(planned_families)
+    unknown_implemented = sorted(implemented_set - set(SIGNAL_SOURCE_FAMILIES))
+    if unknown_implemented:
+        raise ValueError(
+            "signal source family catalog domain_coverage unknown implemented "
+            "families: "
+            + ", ".join(unknown_implemented)
+        )
+    unassigned_known = sorted(set(SIGNAL_SOURCE_FAMILIES) - implemented_set)
+    if unassigned_known:
+        raise ValueError(
+            "signal source family catalog domain_coverage missing implemented "
+            "families: "
+            + ", ".join(unassigned_known)
+        )
+    planned_overlap = sorted(implemented_set & planned_set)
+    if planned_overlap:
+        raise ValueError(
+            "signal source family catalog domain_coverage planned families include "
+            "implemented families: "
+            + ", ".join(planned_overlap)
+        )
+
+    return {
+        "domain_coverage_present": True,
+        "domains": sorted(str(domain) for domain in value),
+        "domain_count": len(value),
+        "implemented_family_count": len(implemented_families),
+        "planned_family_count": len(planned_families),
+    }
+
+
 def _consumer_contract_coverage_summary(record: Mapping[str, Any]) -> dict[str, Any]:
     family = str(record.get("family", "")).strip()
     canonical_input = str(record.get("canonical_input", "")).strip()
@@ -529,9 +698,21 @@ def _consumer_contract_coverage_summary(record: Mapping[str, Any]) -> dict[str, 
     }
 
 
-def _normalized_sequence(value: object, *, field: str, family: str) -> list[str]:
-    if not isinstance(value, list) or not value:
-        raise ValueError(f"signal source family {family} {field} must be a non-empty list")
+def _normalized_sequence(
+    value: object,
+    *,
+    field: str,
+    family: str,
+    allow_empty: bool = False,
+) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"signal source family {family} {field} must be a list")
+    if not value:
+        if allow_empty:
+            return []
+        raise ValueError(
+            f"signal source family {family} {field} must be a non-empty list"
+        )
     normalized = [str(item).strip() for item in value]
     if any(not item for item in normalized):
         raise ValueError(f"signal source family {family} {field} includes empty values")
@@ -547,6 +728,16 @@ def _normalized_field_set(value: object, *, field: str, family: str) -> set[str]
         item.lower()
         for item in _normalized_sequence(value, field=field, family=family)
     }
+
+
+def _duplicate_values(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for value in values:
+        if value in seen:
+            duplicates.add(value)
+        seen.add(value)
+    return sorted(duplicates)
 
 
 def _normalize_symbol(symbol: object) -> str:

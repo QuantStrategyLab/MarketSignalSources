@@ -165,6 +165,11 @@ metadata such as `crypto.btc_cycle_daily`'s canonical input, transform, freshnes
 policy, produced fields, and compatible consumer profiles. It is intended for CI
 and release checks before adding more US equity, Hong Kong equity, or crypto
 families.
+The catalog also carries a top-level `domain_coverage` roadmap for crypto,
+US equity, and Hong Kong equity source families. `domain_coverage` separates
+implemented families from planned families, so platform CI can inspect the
+cross-market direction without treating planned items as runtime-compatible
+source families.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.

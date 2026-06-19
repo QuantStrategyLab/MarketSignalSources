@@ -151,6 +151,14 @@ checks each family's `compatible_profiles` against the consumer contract registr
 and rejects a family that does not produce the symbols or indicator fields its
 declared consumers require.
 
+The catalog also includes a top-level `domain_coverage` roadmap. It lists the
+implemented source families and planned family names for `crypto`, `us_equity`,
+and `hk_equity`, plus the canonical input categories each domain is expected to
+publish. Planned entries in `domain_coverage` are intentionally not included in
+`known_signal_source_families()` and do not satisfy
+`--require-all-known-families`; they become runtime-compatible only after a real
+family record, consumer contract, artifact writer, and validation test exist.
+
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`
 modules. Do not add a new market-specific envelope builder unless the runtime

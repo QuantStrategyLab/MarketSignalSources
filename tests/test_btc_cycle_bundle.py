@@ -19,6 +19,7 @@ from market_signal_sources.artifacts.source_catalog import (
     SIGNAL_SOURCE_FAMILIES,
     compatible_profiles_for_signal_source_family,
     known_signal_source_families,
+    signal_source_domain_coverage_payload,
     signal_source_family_consumer_contract_coverage,
     signal_source_family_catalog_payload,
     signal_source_family_record,
@@ -383,6 +384,15 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert known_signal_source_families() == ("crypto.btc_cycle_daily",)
     assert catalog["schema_version"] == "market_signal_source_families.v1"
     assert catalog["families"] == [record]
+    assert catalog["domain_coverage"]["crypto"]["implemented_families"] == [
+        "crypto.btc_cycle_daily"
+    ]
+    assert "us_equity.index_breadth_daily" in catalog["domain_coverage"][
+        "us_equity"
+    ]["planned_families"]
+    assert signal_source_domain_coverage_payload()["hk_equity"][
+        "implemented_families"
+    ] == []
     assert record["domain"] == "crypto"
     assert record["canonical_input"] == "derived_indicators"
     assert record["transform"] == bundle["provenance"]["transform"]
@@ -446,11 +456,22 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     validation_summary = json.loads(capsys.readouterr().out)
     assert validation_summary["family_count"] == 1
     assert validation_summary["all_known_families_present"] is True
+    assert validation_summary["domain_coverage_present"] is True
+    assert validation_summary["domain_count"] == 3
+    assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
+    assert validation_summary["implemented_family_count"] == 1
+    assert validation_summary["planned_family_count"] == 7
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
     ]["consumer_count"] == 4
     assert validation_summary["sha256"] == _sha256(catalog_path)
+
+    legacy_payload = signal_source_family_catalog_payload()
+    legacy_payload.pop("domain_coverage")
+    legacy_summary = validate_signal_source_family_catalog(legacy_payload)
+    assert legacy_summary["domain_coverage_present"] is False
+    assert legacy_summary["domain_count"] == 0
 
     drifted_payload = signal_source_family_catalog_payload()
     drifted_payload["families"][0]["transform"] = "crypto.btc.wrong.v1"
@@ -458,6 +479,15 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     drift_result = list_families_main(["--validate-json", str(catalog_path)])
     assert drift_result == 2
     assert "signal source family record drift" in capsys.readouterr().err
+
+    domain_drifted_payload = signal_source_family_catalog_payload()
+    domain_drifted_payload["domain_coverage"]["crypto"]["planned_families"].append(
+        "crypto.btc_cycle_daily"
+    )
+    catalog_path.write_text(json.dumps(domain_drifted_payload), encoding="utf-8")
+    domain_drift_result = list_families_main(["--validate-json", str(catalog_path)])
+    assert domain_drift_result == 2
+    assert "signal source family catalog domain_coverage drift" in capsys.readouterr().err
 
     unknown_result = list_families_main(["--family", "unknown.family"])
     assert unknown_result == 2
@@ -504,6 +534,7 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert summary["schema_version"] == "market_signal_source_families.v1"
     assert summary["family_count"] == 1
     assert summary["all_consumer_contracts_satisfied"] is True
+    assert summary["domain_coverage_present"] is True
     assert summary["sha256"] == _sha256(output_json)
 
     validate_summary = validate_signal_source_family_catalog_file(
@@ -531,6 +562,8 @@ def test_signal_source_family_catalog_can_publish_manifest(
     )
     assert manifest_summary["catalog_sha256"] == _sha256(catalog_path)
     assert manifest_summary["all_known_families_present"] is True
+    assert manifest_summary["domain_count"] == 3
+    assert manifest_summary["planned_family_count"] == 7
     assert manifest_summary["all_consumer_contracts_satisfied"] is True
     assert manifest["catalog_path"] == "signal_source_families.json"
 
