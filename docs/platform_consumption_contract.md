@@ -397,7 +397,8 @@ For runtime publication:
 ```bash
 python -m market_signal_sources.cli.list_signal_source_families \
   --validate-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
-  --require-all-known-families
+  --require-all-known-families \
+  --require-runtime-consumer-coverage
 
 python -m market_signal_sources.cli.list_consumer_contracts \
   --validate-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
@@ -431,7 +432,8 @@ for consumers that prefer a Python API over a subprocess.
 The source-family catalog validation also returns
 `runtime_consumer_coverage`; platform deploy checks should require
 `all_runtime_consumers_covered=true` before treating adapter config-set coverage
-as complete.
+as complete. The CLI flag `--require-runtime-consumer-coverage` turns that
+summary into a failing validation gate.
 
 ## Compatibility And Risk
 

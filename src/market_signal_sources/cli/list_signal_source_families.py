@@ -35,6 +35,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.validate_manifest,
                 require_all_known_families=args.require_all_known_families,
             )
+            _enforce_runtime_consumer_coverage(
+                payload,
+                required=args.require_runtime_consumer_coverage,
+            )
         elif args.validate_json is not None:
             if (
                 args.output_json is not None
@@ -50,10 +54,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.validate_json,
                 require_all_known_families=args.require_all_known_families,
             )
+            _enforce_runtime_consumer_coverage(
+                payload,
+                required=args.require_runtime_consumer_coverage,
+            )
         elif args.require_all_known_families:
             raise ValueError(
                 "--require-all-known-families is only valid with --validate-json "
                 "or --validate-manifest"
+            )
+        elif args.require_runtime_consumer_coverage:
+            raise ValueError(
+                "--require-runtime-consumer-coverage is only valid with "
+                "--validate-json or --validate-manifest"
             )
         elif args.output_json is not None and args.output_dir is not None:
             raise ValueError("provide either --output-json or --output-dir, not both")
@@ -125,8 +138,25 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Require a validated catalog to cover every known signal source family.",
     )
+    parser.add_argument(
+        "--require-runtime-consumer-coverage",
+        action="store_true",
+        help=(
+            "Require a validated catalog to map every known runtime consumer to "
+            "at least one implemented source family."
+        ),
+    )
     parser.add_argument("--pretty", action="store_true")
     return parser
+
+
+def _enforce_runtime_consumer_coverage(
+    payload: dict[str, object],
+    *,
+    required: bool,
+) -> None:
+    if required and payload.get("all_runtime_consumers_covered") is not True:
+        raise ValueError("runtime consumer coverage is incomplete")
 
 
 if __name__ == "__main__":

@@ -645,6 +645,7 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
             "--validate-json",
             str(catalog_path),
             "--require-all-known-families",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
@@ -733,6 +734,12 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     )
     assert mixed_selector_result == 2
     assert "either --family or --domain" in capsys.readouterr().err
+
+    invalid_runtime_requirement_result = list_families_main(
+        ["--require-runtime-consumer-coverage"]
+    )
+    assert invalid_runtime_requirement_result == 2
+    assert "--require-runtime-consumer-coverage is only valid" in capsys.readouterr().err
 
 
 def test_signal_source_family_catalog_validation_rejects_contract_gap(
