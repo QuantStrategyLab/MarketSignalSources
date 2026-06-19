@@ -126,6 +126,7 @@ Each new family should define:
 
 The family catalog should be updated before runtime consumers are added. It is a
 small compatibility map, not a provider registry or live service definition.
+CI can read it through `python -m market_signal_sources.cli.list_signal_source_families`.
 
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`

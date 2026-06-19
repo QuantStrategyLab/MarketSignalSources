@@ -51,6 +51,9 @@ from market_signal_sources.artifacts.validation import (
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
+from market_signal_sources.cli.list_signal_source_families import (
+    main as list_families_main,
+)
 from market_signal_sources.cli.validate_quality_report import main as validate_quality_main
 from market_signal_sources.cli.validate_research_export import main as validate_research_main
 from market_signal_sources.cli.validate_signal_bundle import main as validate_main
@@ -364,6 +367,27 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         bundle["derived_indicators"]["BTC-USD"]
     )
     assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
+
+
+def test_signal_source_family_catalog_cli_prints_json_safe_payload(capsys) -> None:
+    result = list_families_main(["--family", "crypto.btc_cycle_daily", "--pretty"])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "market_signal_source_families.v1"
+    assert [family["family"] for family in payload["families"]] == [
+        "crypto.btc_cycle_daily"
+    ]
+    assert payload["families"][0]["compatible_profiles"] == [
+        "us_equity:ibit_smart_dca",
+        "research:ibit_btc_ahr999_precomputed",
+        "research:ibit_btc_ahr999_mayer_precomputed",
+        "research:ibit_btc_ahr999_mayer_precomputed_variants",
+    ]
+
+    unknown_result = list_families_main(["--family", "unknown.family"])
+    assert unknown_result == 2
+    assert "unknown signal source family" in capsys.readouterr().err
 
 
 def test_signal_bundle_publication_index_upserts_manifest_tree(tmp_path) -> None:

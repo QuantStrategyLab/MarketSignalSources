@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 
@@ -74,14 +75,22 @@ def compatible_profiles_for_signal_source_family(family: str) -> tuple[str, ...]
     return tuple(str(profile) for profile in record["compatible_profiles"])
 
 
-def signal_source_family_catalog_payload() -> dict[str, Any]:
+def signal_source_family_catalog_payload(
+    *,
+    families: Iterable[str] | None = None,
+) -> dict[str, Any]:
     """Return JSON-safe metadata for all known signal source families."""
 
+    selected_families = (
+        tuple(families)
+        if families is not None
+        else known_signal_source_families()
+    )
     return {
         "schema_version": SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
         "families": [
             signal_source_family_record(family)
-            for family in known_signal_source_families()
+            for family in selected_families
         ],
     }
 

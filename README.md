@@ -164,6 +164,12 @@ policy, produced fields, and compatible consumer profiles. It is intended for CI
 and release checks before adding more US equity, Hong Kong equity, or crypto
 families.
 
+```bash
+python -m market_signal_sources.cli.list_signal_source_families \
+  --family crypto.btc_cycle_daily \
+  --pretty
+```
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash
