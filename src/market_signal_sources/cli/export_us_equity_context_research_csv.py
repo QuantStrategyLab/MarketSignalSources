@@ -13,6 +13,7 @@ from market_signal_sources.derived.us_equity import (
     NASDAQ_SP500_CONTEXT_ARTIFACT_TYPE,
     NASDAQ_SP500_CONTEXT_TRANSFORM,
     build_nasdaq_sp500_context_frame,
+    write_nasdaq_sp500_context_availability_report,
 )
 
 
@@ -22,6 +23,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         input_frame = pd.read_csv(args.input_csv)
+        quality_report = None
+        if args.quality_report is not None:
+            quality_report = write_nasdaq_sp500_context_availability_report(
+                args.quality_report,
+                args.input_csv,
+                as_of=args.as_of,
+                date_column=args.date_column,
+                cape_percentile_column=args.cape_percentile_column,
+                vix_percentile_column=args.vix_percentile_column,
+                breadth_column=args.breadth_column,
+                min_history_rows=args.min_history,
+                max_allowed_gap_days=args.max_allowed_gap_days,
+            )
         output = build_nasdaq_sp500_context_frame(
             input_frame,
             as_of=args.as_of,
@@ -65,6 +79,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "last_date": str(output.iloc[-1]["date"]),
         "columns": list(output.columns),
     }
+    if args.quality_report is not None and quality_report is not None:
+        summary["quality_report"] = str(args.quality_report)
+        summary["quality_status"] = quality_report["quality_status"]
     print(json.dumps(summary, indent=2 if args.pretty else None, sort_keys=True))
     return 0
 
@@ -80,6 +97,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path)
     parser.add_argument("--as-of")
     parser.add_argument("--min-history", type=int, default=1)
+    parser.add_argument("--max-allowed-gap-days", type=int, default=7)
+    parser.add_argument("--quality-report", type=Path)
     parser.add_argument("--source-version", default="0.1.0")
     parser.add_argument("--date-column", default="date")
     parser.add_argument("--cape-percentile-column", default="cape_percentile")

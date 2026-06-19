@@ -123,7 +123,10 @@ bundle files.
 The BTC path uses `artifact_type=btc_cycle_research_csv`; the Nasdaq/S&P
 external context path uses `artifact_type=us_equity_context_research_csv` and
 `transform=us_equity.nasdaq_sp500.context.v1`. Both are hash-pinned offline
-research inputs, not runtime platform injection contracts.
+research inputs, not runtime platform injection contracts. The US equity context
+export can also write `us_equity_context_availability_report.v1`, which gates
+missing fields, date validity, percentile ranges, duplicate dates, and date gaps
+before strategy research ranks any candidate.
 
 ## Multi-Market Extension
 

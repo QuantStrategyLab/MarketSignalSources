@@ -1550,6 +1550,7 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     input_csv = tmp_path / "us_equity_context_raw.csv"
     output_csv = tmp_path / "research" / "us_equity_context.csv"
     manifest_path = tmp_path / "research" / "us_equity_context.manifest.json"
+    quality_report_path = tmp_path / "research" / "us_equity_context.quality.json"
     pd.DataFrame(
         {
             "date": dates.date,
@@ -1569,6 +1570,8 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
             str(output_csv),
             "--manifest-path",
             str(manifest_path),
+            "--quality-report",
+            str(quality_report_path),
             "--as-of",
             "2025-01-07",
             "--pretty",
@@ -1579,14 +1582,26 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     summary = json.loads(capsys.readouterr().out)
     exported = pd.read_csv(output_csv)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
     assert summary["artifact_type"] == "us_equity_context_research_csv"
     assert summary["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert summary["quality_report"] == str(quality_report_path)
+    assert summary["quality_status"] == "warn"
     assert summary["row_count"] == 4
     assert summary["last_date"] == "2025-01-07"
     assert manifest["artifact_type"] == "us_equity_context_research_csv"
     assert manifest["transform"] == "us_equity.nasdaq_sp500.context.v1"
     assert manifest["input_csv"]["sha256"] == _sha256(input_csv)
     assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert quality_report["schema_version"] == (
+        "us_equity_context_availability_report.v1"
+    )
+    assert quality_report["artifact_type"] == "us_equity_context_availability_report"
+    assert quality_report["quality_status"] == "warn"
+    assert quality_report["filtered_after_as_of_count"] == 1
+    assert quality_report["normalized_row_count"] == 4
+    assert quality_report["failure_reasons"] == []
+    assert quality_report["warning_reasons"] == ["rows_after_as_of_filtered"]
     assert list(exported.columns) == [
         "date",
         "QQQ",
