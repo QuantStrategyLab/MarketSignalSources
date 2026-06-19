@@ -328,6 +328,7 @@ def validate_signal_bundle_index_for_consumer(
 ) -> dict[str, Any]:
     """Validate an index-selected bundle against a consumer contract."""
 
+    required_indicator_fields_for_consumer(consumer)
     index_path = Path(path)
     index = _load_json_mapping(index_path, label="signal bundle index")
     _validate_index(index)
@@ -337,6 +338,7 @@ def validate_signal_bundle_index_for_consumer(
         expected_canonical_input=expected_canonical_input,
         as_of=as_of,
         bundle_id=bundle_id,
+        compatible_profile=consumer,
         accepted_freshness_statuses=accepted_freshness_statuses,
     )
     summary = validate_signal_bundle_manifest_for_consumer(
@@ -453,10 +455,12 @@ def _resolve_manifest_from_index(
     expected_canonical_input: str,
     as_of: str | None,
     bundle_id: str | None,
+    compatible_profile: str | None = None,
     accepted_freshness_statuses: Iterable[str],
 ) -> Path:
     accepted = {str(item).strip().lower() for item in accepted_freshness_statuses}
     target_as_of = str(as_of).strip() if as_of is not None else None
+    target_profile = str(compatible_profile).strip() if compatible_profile is not None else None
     candidates: list[Mapping[str, Any]] = []
     for raw_entry in index["bundles"]:
         entry = dict(raw_entry)
@@ -471,6 +475,11 @@ def _resolve_manifest_from_index(
         if bundle_id is not None and entry_bundle_id != str(bundle_id).strip():
             continue
         if target_as_of is not None and entry_as_of > target_as_of:
+            continue
+        if target_profile is not None and target_profile not in _string_sequence(
+            entry.get("compatible_profiles"),
+            field="signal bundle index compatible_profiles",
+        ):
             continue
         candidates.append(entry)
     if not candidates:

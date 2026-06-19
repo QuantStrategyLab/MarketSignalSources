@@ -70,6 +70,20 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _signal_bundle_index_entry(root: Path, manifest_path: Path) -> dict[str, object]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return {
+        "manifest_path": manifest_path.relative_to(root).as_posix(),
+        "manifest_sha256": _sha256(manifest_path),
+        "bundle_id": manifest["bundle_id"],
+        "as_of": manifest["as_of"],
+        "canonical_input": manifest["canonical_input"],
+        "compatible_profiles": manifest["compatible_profiles"],
+        "freshness_status": manifest["freshness_status"],
+        "bundle_schema_version": manifest["bundle_schema_version"],
+    }
+
+
 def test_ohlcv_quality_report_flags_local_csv_issues(tmp_path) -> None:
     input_csv = tmp_path / "btc.csv"
     pd.DataFrame(
@@ -302,6 +316,66 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     )
     with pytest.raises(SignalBundleValidationError, match="quality_report_sha256"):
         validate_signal_bundle_manifest(paths["manifest"])
+
+
+def test_consumer_index_validation_filters_incompatible_newer_bundle(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    consumer = "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    compatible_bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    incompatible_bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-18",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-18T00:15:00Z",
+    )
+    incompatible_bundle["consumer_contract"]["compatible_profiles"] = [
+        "research:other_consumer"
+    ]
+
+    compatible_dir = tmp_path / "compatible"
+    incompatible_dir = tmp_path / "incompatible"
+    compatible_paths = write_signal_bundle_artifacts(compatible_dir, compatible_bundle)
+    incompatible_paths = write_signal_bundle_artifacts(
+        incompatible_dir,
+        incompatible_bundle,
+    )
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "market_signal_index.v1",
+                "generated_at": "2025-09-19T00:00:00Z",
+                "bundles": [
+                    _signal_bundle_index_entry(tmp_path, incompatible_paths["manifest"]),
+                    _signal_bundle_index_entry(tmp_path, compatible_paths["manifest"]),
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    index_summary = validate_signal_bundle_index(index_path, as_of="2025-09-19")
+    consumer_summary = validate_signal_bundle_index_for_consumer(
+        index_path,
+        as_of="2025-09-19",
+        consumer=consumer,
+    )
+
+    assert index_summary["bundle_id"] == incompatible_bundle["bundle_id"]
+    assert consumer_summary["bundle_id"] == compatible_bundle["bundle_id"]
+    assert consumer in consumer_summary["compatible_profiles"]
+    assert consumer_summary["required_indicator_fields_by_symbol"] == {
+        "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")
+    }
 
 
 def test_write_signal_bundle_artifacts_rejects_quality_report_raw_input_mismatch(
