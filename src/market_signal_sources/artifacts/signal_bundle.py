@@ -13,6 +13,9 @@ from market_signal_sources.derived.crypto.btc_cycle import compute_btc_cycle_ind
 from market_signal_sources.derived.technical_indicators import (
     compute_daily_technical_indicators,
 )
+from market_signal_sources.derived.us_equity import (
+    compute_semiconductor_rotation_indicators,
+)
 
 
 MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION = "market_signal_bundle.v1"
@@ -214,6 +217,94 @@ def build_daily_technical_signal_bundle(
             "provider_dataset": _non_empty(provider_dataset, "provider_dataset"),
             "raw_artifact_sha256": _non_empty(raw_artifact_sha256, "raw_artifact_sha256"),
             "transform": _non_empty(transform, "transform"),
+            "license_scope": _non_empty(license_scope, "license_scope"),
+            "generated_by": _non_empty(generated_by, "generated_by"),
+        },
+        compatible_profiles=compatible_profiles,
+    )
+
+
+def build_semiconductor_rotation_signal_bundle(
+    soxl_ohlcv: pd.DataFrame,
+    soxx_ohlcv: pd.DataFrame,
+    *,
+    as_of: str,
+    provider: str = "local_csv",
+    provider_dataset: str = "us_equity_semiconductor_daily_ohlcv",
+    raw_artifact_sha256: str,
+    source_repo: str = "QuantStrategyLab/MarketSignalSources",
+    source_version: str = "0.1.0",
+    code_commit: str = "0000000000000000000000000000000000000000",
+    generated_at: str,
+    provider_timestamp: str | None = None,
+    freshness_status: str = FRESHNESS_FRESH,
+    freshness_policy: str = "us_equity_daily_close_t_plus_1",
+    max_age_hours: int = 36,
+    license_scope: str = "internal_runtime",
+    generated_by: str = "market_signal_sources.local_csv",
+    trend_ma_window: int = 140,
+    dynamic_rsi_quantile_window: int = 252,
+    dynamic_rsi_quantile: float = 0.90,
+    dynamic_rsi_floor: float = 70.0,
+    dynamic_volatility_delever_window: int = 10,
+    dynamic_volatility_delever_quantile_window: int = 252,
+    dynamic_volatility_delever_quantile: float = 0.95,
+    dynamic_volatility_delever_min_periods: int = 126,
+    dynamic_volatility_delever_floor: float = 0.50,
+    dynamic_volatility_delever_cap: float = 0.75,
+    min_history: int | None = None,
+    compatible_profiles: Iterable[str] = ("us_equity:soxl_soxx_trend_income",),
+) -> dict[str, Any]:
+    """Build a market_signal_bundle.v1 SOXL/SOXX rotation payload."""
+
+    normalized_as_of = _normalize_date(as_of)
+    normalized_provider_timestamp = (
+        _non_empty(provider_timestamp, "provider_timestamp")
+        if provider_timestamp is not None
+        else f"{normalized_as_of}T00:00:00Z"
+    )
+    indicators_by_symbol = compute_semiconductor_rotation_indicators(
+        soxl_ohlcv,
+        soxx_ohlcv,
+        as_of=normalized_as_of,
+        trend_ma_window=trend_ma_window,
+        dynamic_rsi_quantile_window=dynamic_rsi_quantile_window,
+        dynamic_rsi_quantile=dynamic_rsi_quantile,
+        dynamic_rsi_floor=dynamic_rsi_floor,
+        dynamic_volatility_delever_window=dynamic_volatility_delever_window,
+        dynamic_volatility_delever_quantile_window=(
+            dynamic_volatility_delever_quantile_window
+        ),
+        dynamic_volatility_delever_quantile=dynamic_volatility_delever_quantile,
+        dynamic_volatility_delever_min_periods=dynamic_volatility_delever_min_periods,
+        dynamic_volatility_delever_floor=dynamic_volatility_delever_floor,
+        dynamic_volatility_delever_cap=dynamic_volatility_delever_cap,
+        min_history=min_history,
+    )
+    for indicators in indicators_by_symbol.values():
+        indicators["provider_timestamp"] = normalized_provider_timestamp
+
+    return build_derived_indicator_signal_bundle(
+        domain="us_equity",
+        bundle_id=f"us_equity.semiconductor_rotation.daily.{normalized_as_of}",
+        as_of=normalized_as_of,
+        generated_at=generated_at,
+        symbols=("SOXL", "SOXX"),
+        derived_indicators=indicators_by_symbol,
+        freshness={
+            "policy": freshness_policy,
+            "max_age_hours": int(max_age_hours),
+            "provider_timestamp": normalized_provider_timestamp,
+            "status": freshness_status,
+        },
+        provenance={
+            "source_repo": _non_empty(source_repo, "source_repo"),
+            "source_version": _non_empty(source_version, "source_version"),
+            "code_commit": _non_empty(code_commit, "code_commit"),
+            "provider": _non_empty(provider, "provider"),
+            "provider_dataset": _non_empty(provider_dataset, "provider_dataset"),
+            "raw_artifact_sha256": _non_empty(raw_artifact_sha256, "raw_artifact_sha256"),
+            "transform": "us_equity.semiconductor_rotation.v1",
             "license_scope": _non_empty(license_scope, "license_scope"),
             "generated_by": _non_empty(generated_by, "generated_by"),
         },

@@ -225,6 +225,54 @@ US_EQUITY_TECHNICAL_SOURCE_PROFILES: tuple[dict[str, object], ...] = (
 US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "us_equity:nasdaq_sp500_smart_dca",
 )
+US_EQUITY_SEMICONDUCTOR_ROTATION_DERIVED_INDICATOR_FIELDS: tuple[str, ...] = (
+    "bb_lower",
+    "bb_mid",
+    "bb_upper",
+    "ma20",
+    "ma20_slope",
+    "ma_trend",
+    "price",
+    "provider_timestamp",
+    "realized_volatility",
+    "realized_volatility_10",
+    "realized_volatility_10_dynamic_cap",
+    "realized_volatility_10_dynamic_floor",
+    "realized_volatility_10_dynamic_lookback",
+    "realized_volatility_10_dynamic_min_periods",
+    "realized_volatility_10_dynamic_percentile",
+    "realized_volatility_10_dynamic_sample_count",
+    "realized_volatility_10_dynamic_threshold",
+    "realized_volatility_20",
+    "realized_volatility_dynamic_cap",
+    "realized_volatility_dynamic_floor",
+    "realized_volatility_dynamic_lookback",
+    "realized_volatility_dynamic_min_periods",
+    "realized_volatility_dynamic_percentile",
+    "realized_volatility_dynamic_sample_count",
+    "realized_volatility_dynamic_threshold",
+    "rsi14",
+    "rsi14_dynamic_threshold",
+)
+US_EQUITY_SEMICONDUCTOR_ROTATION_SOURCE_PROFILES: tuple[dict[str, object], ...] = (
+    {
+        "source_id": "local_csv.us_equity_semiconductor_daily_ohlcv",
+        "source_name": "Local SOXL/SOXX daily OHLCV cache",
+        "provider_dataset": "us_equity_semiconductor_daily_ohlcv",
+        "produced_fields": US_EQUITY_SEMICONDUCTOR_ROTATION_DERIVED_INDICATOR_FIELDS,
+        "history_frequency": "daily",
+        "point_in_time_status": "cache_snapshot_required",
+        "publication_lag_policy": "us_equity_daily_close_t_plus_1",
+        "research_use_policy": (
+            "accepted when both SOXL and SOXX raw OHLCV cache hashes, provider "
+            "timestamp, and semiconductor rotation transform version are pinned"
+        ),
+        "source_url": "",
+    },
+)
+US_EQUITY_SEMICONDUCTOR_ROTATION_COMPATIBLE_PROFILES: tuple[str, ...] = (
+    "us_equity:soxl_soxx_trend_income",
+)
 
 SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "crypto": {
@@ -248,6 +296,7 @@ SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "us_equity": {
         "implemented_families": (
             "us_equity.technical_daily",
+            "us_equity.semiconductor_rotation_daily",
             "us_equity.nasdaq_sp500_context_daily",
             "us_equity.nasdaq_sp500_price_proxy_daily",
             "us_equity.nasdaq_sp500_public_context_daily",
@@ -332,6 +381,25 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "source_profiles": US_EQUITY_TECHNICAL_SOURCE_PROFILES,
         "compatible_profiles": US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES,
         "runtime_consumers": US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES,
+        "research_consumers": (),
+    },
+    "us_equity.semiconductor_rotation_daily": {
+        "family": "us_equity.semiconductor_rotation_daily",
+        "domain": "us_equity",
+        "bundle_type": "derived_indicators",
+        "bundle_id_prefix": "us_equity.semiconductor_rotation.daily",
+        "canonical_input": "derived_indicators",
+        "transform": "us_equity.semiconductor_rotation.v1",
+        "provider_dataset": "us_equity_semiconductor_daily_ohlcv",
+        "freshness_policy": "us_equity_daily_close_t_plus_1",
+        "minimum_history_rows": 420,
+        "symbols": ("SOXL", "SOXX"),
+        "derived_indicator_fields": (
+            US_EQUITY_SEMICONDUCTOR_ROTATION_DERIVED_INDICATOR_FIELDS
+        ),
+        "source_profiles": US_EQUITY_SEMICONDUCTOR_ROTATION_SOURCE_PROFILES,
+        "compatible_profiles": US_EQUITY_SEMICONDUCTOR_ROTATION_COMPATIBLE_PROFILES,
+        "runtime_consumers": US_EQUITY_SEMICONDUCTOR_ROTATION_COMPATIBLE_PROFILES,
         "research_consumers": (),
     },
     "us_equity.nasdaq_sp500_public_context_daily": {
