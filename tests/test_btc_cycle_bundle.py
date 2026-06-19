@@ -2730,6 +2730,77 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     assert cli_summary["artifact_type"] == "btc_cycle_research_csv"
     assert cli_summary["columns"][-1] == "cycle_indicator_source"
 
+    catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "btc-source-catalog"
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "btc-contracts"
+    )
+    handoff_path = tmp_path / "btc_research_handoff.json"
+    handoff_summary = write_research_signal_handoff_manifest(
+        handoff_path,
+        research_export_manifest=manifest_path,
+        source_family_catalog_manifest=catalog_summary["manifest_path"],
+        consumer_contract_registry_manifest=contract_summary["manifest_path"],
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
+    )
+    assert handoff_summary["all_runtime_consumers_covered"] is True
+    assert handoff_summary["source_families"] == ("crypto.btc_cycle_daily",)
+    handoff_payload = json.loads(handoff_path.read_text(encoding="utf-8"))
+    assert handoff_payload["all_runtime_consumers_covered"] is True
+
+    validation_handoff_summary = validate_research_signal_handoff_manifest(
+        handoff_path,
+        consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
+    )
+    assert validation_handoff_summary["sha256"] == _sha256(handoff_path)
+    assert validation_handoff_summary["all_runtime_consumers_covered"] is True
+
+    cli_handoff_path = tmp_path / "cli_btc_research_handoff.json"
+    write_handoff_result = research_handoff_main(
+        [
+            "--output-manifest",
+            str(cli_handoff_path),
+            "--research-export-manifest",
+            str(manifest_path),
+            "--source-family-catalog-manifest",
+            str(catalog_summary["manifest_path"]),
+            "--consumer-contract-registry-manifest",
+            str(contract_summary["manifest_path"]),
+            "--consumer",
+            "research:ibit_btc_ahr999_mayer_precomputed_variants",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
+            "--pretty",
+        ]
+    )
+    assert write_handoff_result == 0
+    cli_handoff_summary = json.loads(capsys.readouterr().out)
+    assert cli_handoff_summary["all_runtime_consumers_covered"] is True
+
+    validate_handoff_result = research_handoff_main(
+        [
+            "--validate-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:ibit_btc_ahr999_mayer_precomputed_variants",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
+            "--pretty",
+        ]
+    )
+    assert validate_handoff_result == 0
+    cli_validate_handoff_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_handoff_summary["all_runtime_consumers_covered"] is True
+
 
 def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     dates = pd.date_range("2025-01-02", periods=5, freq="B")

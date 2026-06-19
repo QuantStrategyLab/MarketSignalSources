@@ -423,7 +423,8 @@ python -m market_signal_sources.cli.validate_research_export \
 
 python -m market_signal_sources.cli.build_research_handoff \
   --validate-manifest ./data/output/research_handoff.json \
-  --consumer research:ibit_btc_ahr999_mayer_precomputed
+  --consumer research:ibit_btc_ahr999_mayer_precomputed \
+  --require-runtime-consumer-coverage
 ```
 
 Strategy repositories should run their own handoff validators too, because they
@@ -435,7 +436,7 @@ The source-family catalog validation also returns
 `all_runtime_consumers_covered=true` before treating adapter config-set coverage
 as complete. The CLI flag `--require-runtime-consumer-coverage` turns that
 summary into a failing validation gate, including through platform handoff
-manifest and index validation.
+manifest, platform index, and research handoff validation.
 
 ## Compatibility And Risk
 

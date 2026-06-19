@@ -37,6 +37,7 @@ def write_research_signal_handoff_manifest(
     consumer: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Write a handoff manifest that pins one research CSV export and contracts."""
 
@@ -64,6 +65,10 @@ def write_research_signal_handoff_manifest(
     source_catalog_summary = validate_signal_source_family_catalog_manifest(
         source_catalog_manifest_path,
         require_all_known_families=require_all_known_families,
+    )
+    _require_runtime_consumer_coverage(
+        source_catalog_summary,
+        required=require_runtime_consumer_coverage,
     )
     consumer_registry_summary = validate_consumer_contract_registry_manifest(
         consumer_registry_manifest_path,
@@ -103,6 +108,7 @@ def write_research_signal_handoff_manifest(
         consumer=target_consumer,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
 
 
@@ -112,6 +118,7 @@ def validate_research_signal_handoff_manifest(
     consumer: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Validate a research handoff manifest and each linked manifest."""
 
@@ -155,6 +162,10 @@ def validate_research_signal_handoff_manifest(
     source_catalog_summary = validate_signal_source_family_catalog_manifest(
         source_catalog_manifest_path,
         require_all_known_families=require_all_known_families,
+    )
+    _require_runtime_consumer_coverage(
+        source_catalog_summary,
+        required=require_runtime_consumer_coverage,
     )
     consumer_registry_summary = validate_consumer_contract_registry_manifest(
         consumer_registry_manifest_path,
@@ -232,6 +243,9 @@ def _research_handoff_manifest(
         "all_consumer_contracts_satisfied": source_catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
+        "all_runtime_consumers_covered": source_catalog_summary[
+            "all_runtime_consumers_covered"
+        ],
         "consumer_contract_registry_manifest_path": (
             consumer_registry_manifest_path.relative_to(root).as_posix()
         ),
@@ -289,6 +303,9 @@ def _research_handoff_summary(
         ],
         "all_consumer_contracts_satisfied": source_catalog_summary[
             "all_consumer_contracts_satisfied"
+        ],
+        "all_runtime_consumers_covered": source_catalog_summary[
+            "all_runtime_consumers_covered"
         ],
         "consumer_contract_registry_manifest_path": str(
             consumer_registry_manifest_path.resolve()
@@ -359,6 +376,18 @@ def _validate_registry_consumer(
         )
 
 
+def _require_runtime_consumer_coverage(
+    source_catalog_summary: Mapping[str, Any],
+    *,
+    required: bool,
+) -> None:
+    if (
+        required
+        and source_catalog_summary.get("all_runtime_consumers_covered") is not True
+    ):
+        raise ValueError("source family catalog runtime consumer coverage is incomplete")
+
+
 def _validate_matching_source_families(
     matched_source_families: tuple[str, ...],
     *,
@@ -409,6 +438,13 @@ def _validate_research_handoff_shape(payload: Mapping[str, Any]) -> None:
             continue
         if not str(payload.get(field, "")).strip():
             raise ValueError(f"research handoff missing field: {field}")
+    if "all_runtime_consumers_covered" in payload and not isinstance(
+        payload["all_runtime_consumers_covered"],
+        bool,
+    ):
+        raise ValueError(
+            "research handoff all_runtime_consumers_covered must be a bool"
+        )
 
 
 def _validate_summary_consistency(
@@ -436,6 +472,15 @@ def _validate_summary_consistency(
     }
     for field, expected in expected_values.items():
         if payload.get(field) != expected:
+            raise ValueError(
+                f"research handoff {field} mismatch: "
+                f"{payload.get(field)!r} != {expected!r}"
+            )
+    optional_expected_values = {
+        "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
+    }
+    for field, expected in optional_expected_values.items():
+        if field in payload and payload.get(field) != expected:
             raise ValueError(
                 f"research handoff {field} mismatch: "
                 f"{payload.get(field)!r} != {expected!r}"
