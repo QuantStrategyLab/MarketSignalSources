@@ -16,10 +16,13 @@ from market_signal_sources.artifacts.signal_bundle import (
     write_signal_bundle_publication_index,
 )
 from market_signal_sources.artifacts.source_catalog import (
+    SIGNAL_SOURCE_FAMILIES,
     compatible_profiles_for_signal_source_family,
     known_signal_source_families,
+    signal_source_family_consumer_contract_coverage,
     signal_source_family_catalog_payload,
     signal_source_family_record,
+    validate_signal_source_family_catalog,
 )
 from market_signal_sources.artifacts.quality_report import (
     QualityReportValidationError,
@@ -363,6 +366,17 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert compatible_profiles_for_signal_source_family(
         "crypto.btc_cycle_daily"
     ) == tuple(bundle["consumer_contract"]["compatible_profiles"])
+    coverage = signal_source_family_consumer_contract_coverage(
+        "crypto.btc_cycle_daily"
+    )
+    assert coverage["all_required_fields_present"] is True
+    assert coverage["consumer_count"] == 4
+    assert coverage["required_indicator_fields_by_consumer"][
+        "us_equity:ibit_smart_dca"
+    ] == {"BTC-USD": ["ahr999"]}
+    assert coverage["required_indicator_fields_by_consumer"][
+        "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    ] == {"BTC-USD": ["ahr999", "ahr999_sma", "mayer_multiple"]}
     assert set(record["derived_indicator_fields"]) == set(
         bundle["derived_indicators"]["BTC-USD"]
     )
@@ -405,6 +419,10 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     validation_summary = json.loads(capsys.readouterr().out)
     assert validation_summary["family_count"] == 1
     assert validation_summary["all_known_families_present"] is True
+    assert validation_summary["all_consumer_contracts_satisfied"] is True
+    assert validation_summary["consumer_contract_coverage"][
+        "crypto.btc_cycle_daily"
+    ]["consumer_count"] == 4
     assert validation_summary["sha256"] == _sha256(catalog_path)
 
     drifted_payload = signal_source_family_catalog_payload()
@@ -417,6 +435,31 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     unknown_result = list_families_main(["--family", "unknown.family"])
     assert unknown_result == 2
     assert "unknown signal source family" in capsys.readouterr().err
+
+
+def test_signal_source_family_catalog_validation_rejects_contract_gap(
+    monkeypatch,
+) -> None:
+    original = SIGNAL_SOURCE_FAMILIES["crypto.btc_cycle_daily"]
+    reduced_fields = tuple(
+        field
+        for field in original["derived_indicator_fields"]
+        if field != "ahr999_sma"
+    )
+    monkeypatch.setitem(
+        SIGNAL_SOURCE_FAMILIES,
+        "crypto.btc_cycle_daily",
+        {
+            **original,
+            "derived_indicator_fields": reduced_fields,
+        },
+    )
+    payload = signal_source_family_catalog_payload(
+        families=("crypto.btc_cycle_daily",)
+    )
+
+    with pytest.raises(ValueError, match="missing required indicator fields"):
+        validate_signal_source_family_catalog(payload)
 
 
 def test_signal_bundle_publication_index_upserts_manifest_tree(tmp_path) -> None:

@@ -128,7 +128,10 @@ The family catalog should be updated before runtime consumers are added. It is a
 small compatibility map, not a provider registry or live service definition.
 CI can read it through `python -m market_signal_sources.cli.list_signal_source_families`.
 If it is published as JSON, CI should validate it with `--validate-json` and
-`--require-all-known-families` before platform handoff.
+`--require-all-known-families` before platform handoff. That validation also
+checks each family's `compatible_profiles` against the consumer contract registry,
+and rejects a family that does not produce the symbols or indicator fields its
+declared consumers require.
 
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`

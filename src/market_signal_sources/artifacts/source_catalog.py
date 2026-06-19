@@ -7,6 +7,12 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
+from .consumer_contracts import (
+    SignalConsumerContractError,
+    required_indicator_fields_for_consumer,
+)
+from .signal_bundle import CANONICAL_INPUT_DERIVED_INDICATORS
+
 
 SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION = "market_signal_source_families.v1"
 
@@ -79,6 +85,12 @@ def compatible_profiles_for_signal_source_family(family: str) -> tuple[str, ...]
     return tuple(str(profile) for profile in record["compatible_profiles"])
 
 
+def signal_source_family_consumer_contract_coverage(family: str) -> dict[str, Any]:
+    """Return consumer-contract coverage metadata for a known source family."""
+
+    return _consumer_contract_coverage_summary(signal_source_family_record(family))
+
+
 def signal_source_family_catalog_payload(
     *,
     families: Iterable[str] | None = None,
@@ -119,6 +131,7 @@ def validate_signal_source_family_catalog(
 
     seen: set[str] = set()
     family_names: list[str] = []
+    coverage_by_family: dict[str, Any] = {}
     for record in families:
         if not isinstance(record, dict):
             raise ValueError("signal source family catalog records must be objects")
@@ -132,6 +145,7 @@ def validate_signal_source_family_catalog(
         expected_record = signal_source_family_record(family)
         if record != expected_record:
             raise ValueError(f"signal source family record drift: {family}")
+        coverage_by_family[family] = _consumer_contract_coverage_summary(record)
 
     missing_known_families = sorted(set(SIGNAL_SOURCE_FAMILIES) - set(family_names))
     if require_all_known_families and missing_known_families:
@@ -147,6 +161,11 @@ def validate_signal_source_family_catalog(
         "known_family_count": len(SIGNAL_SOURCE_FAMILIES),
         "missing_known_families": missing_known_families,
         "all_known_families_present": not missing_known_families,
+        "consumer_contract_coverage": coverage_by_family,
+        "all_consumer_contracts_satisfied": all(
+            bool(summary["all_required_fields_present"])
+            for summary in coverage_by_family.values()
+        ),
     }
 
 
@@ -180,6 +199,96 @@ def _json_safe_record(record: dict[str, object]) -> dict[str, Any]:
         else:
             safe[key] = value
     return safe
+
+
+def _consumer_contract_coverage_summary(record: Mapping[str, Any]) -> dict[str, Any]:
+    family = str(record.get("family", "")).strip()
+    canonical_input = str(record.get("canonical_input", "")).strip()
+    if canonical_input != CANONICAL_INPUT_DERIVED_INDICATORS:
+        raise ValueError(
+            f"signal source family {family} canonical_input must be "
+            f"{CANONICAL_INPUT_DERIVED_INDICATORS!r} for current consumer contracts"
+        )
+
+    symbols = _normalized_sequence(record.get("symbols"), field="symbols", family=family)
+    fields = _normalized_field_set(
+        record.get("derived_indicator_fields"),
+        field="derived_indicator_fields",
+        family=family,
+    )
+    compatible_profiles = _normalized_sequence(
+        record.get("compatible_profiles"),
+        field="compatible_profiles",
+        family=family,
+    )
+
+    required_by_consumer: dict[str, dict[str, list[str]]] = {}
+    missing_by_consumer: dict[str, dict[str, list[str]]] = {}
+    for consumer in compatible_profiles:
+        try:
+            required_fields_by_symbol = required_indicator_fields_for_consumer(consumer)
+        except SignalConsumerContractError as exc:
+            raise ValueError(str(exc)) from exc
+
+        consumer_required: dict[str, list[str]] = {}
+        consumer_missing: dict[str, list[str]] = {}
+        for raw_symbol, required_fields in required_fields_by_symbol.items():
+            symbol = _normalize_symbol(raw_symbol)
+            normalized_required = [
+                str(field).strip()
+                for field in required_fields
+                if str(field).strip()
+            ]
+            consumer_required[symbol] = normalized_required
+            missing_fields = [
+                field
+                for field in normalized_required
+                if symbol not in symbols or field.lower() not in fields
+            ]
+            if missing_fields:
+                consumer_missing[symbol] = missing_fields
+        required_by_consumer[consumer] = consumer_required
+        if consumer_missing:
+            missing_by_consumer[consumer] = consumer_missing
+
+    if missing_by_consumer:
+        raise ValueError(
+            f"signal source family {family} missing required indicator fields: "
+            f"{missing_by_consumer}"
+        )
+
+    return {
+        "canonical_input": canonical_input,
+        "compatible_profiles": compatible_profiles,
+        "consumer_count": len(compatible_profiles),
+        "symbols": symbols,
+        "required_indicator_fields_by_consumer": required_by_consumer,
+        "all_required_fields_present": True,
+    }
+
+
+def _normalized_sequence(value: object, *, field: str, family: str) -> list[str]:
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"signal source family {family} {field} must be a non-empty list")
+    normalized = [str(item).strip() for item in value]
+    if any(not item for item in normalized):
+        raise ValueError(f"signal source family {family} {field} includes empty values")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"signal source family {family} {field} includes duplicates")
+    if field == "symbols":
+        return [_normalize_symbol(item) for item in normalized]
+    return normalized
+
+
+def _normalized_field_set(value: object, *, field: str, family: str) -> set[str]:
+    return {
+        item.lower()
+        for item in _normalized_sequence(value, field=field, family=family)
+    }
+
+
+def _normalize_symbol(symbol: object) -> str:
+    return str(symbol or "").strip().upper().removesuffix(".US")
 
 
 def _sha256_file(path: Path) -> str:
