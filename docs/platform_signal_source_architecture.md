@@ -128,8 +128,10 @@ credential paths, or service lifecycle ownership.
 6. Validate the manifest or index with the target consumer identifier. This
    checks both `consumer_contract.compatible_profiles` membership and required
    indicator field coverage.
-   `us_equity:ibit_smart_dca` currently requires only `ahr999`; deterministic
-   BTC research helpers remain available through research consumers such as
+   `us_equity:ibit_smart_dca` requires BTC price/trend/cycle fields such as
+   `close`, `sma200`, `sma200_gap`, `rsi14`, `ahr999`, `ahr999_sma`, and
+   `mayer_multiple`; deterministic BTC research helpers remain available
+   through research consumers such as
    `research:ibit_btc_ahr999_helper_precomputed_variants` and
    `research:ibit_btc_ahr999_mayer_precomputed_variants`.
    The manifest and index also carry `compatible_profiles`, and validation
@@ -191,8 +193,8 @@ Future Hong Kong, US equity, and crypto signal families should add new derived
 transforms and canonical inputs without changing existing consumers:
 
 - `derived.crypto.*`: BTC, ETH, stablecoin, or cycle indicators.
-- `derived.us_equity.*`: index breadth, valuation, volatility, or macro-derived
-  indicators.
+- `derived.us_equity.*`: daily technical indicators, index breadth, valuation,
+  volatility, or macro-derived indicators.
 - `derived.hk_equity.*`: Hong Kong market breadth, FX-sensitive indicators, or
   local index regime signals.
 
@@ -232,10 +234,10 @@ publish. Planned entries in `domain_coverage` are intentionally not included in
 `--require-all-known-families`; they become runtime-compatible only after a real
 family record, consumer contract, artifact writer, and validation test exist.
 Catalog validation also reports `runtime_consumer_coverage`. That summary maps
-each known non-research consumer, such as `us_equity:ibit_smart_dca`, back to
-the source families that can publish runtime handoffs for it. A new runtime
-consumer should not be considered deployable until this coverage reports
-`all_runtime_consumers_covered=true`; CI can enforce this through
+each known non-research consumer, such as `us_equity:ibit_smart_dca` and
+`us_equity:nasdaq_sp500_smart_dca`, back to the source families that can publish
+runtime handoffs for it. A new runtime consumer should not be considered
+deployable until this coverage reports `all_runtime_consumers_covered=true`; CI can enforce this through
 `--require-runtime-consumer-coverage` on catalog validation and platform
 handoff or research handoff publication and validation.
 
@@ -245,6 +247,13 @@ same `derived_indicators` envelope as BTC cycle signals, with the stable symbol
 `breadth_above_sma200_pct`. Its initial consumer is
 `research:nasdaq_sp500_external_context_precomputed`, so it supports offline
 Nasdaq/S&P smart-DCA research before any runtime profile depends on it.
+
+The first US equity runtime family is `us_equity.technical_daily`. It publishes
+QQQ/SPY daily technical fields such as `close`, `sma50`, `sma200`, `high252`,
+`drawdown_252d`, `sma200_gap`, and `rsi14` for
+`us_equity:nasdaq_sp500_smart_dca`. Platforms should inject those fields through
+the same `derived_indicators` runtime input rather than recalculating them in
+broker adapters.
 
 There is also a narrower research family,
 `us_equity.nasdaq_sp500_public_context_daily`, for CAPE/VIX-only experiments

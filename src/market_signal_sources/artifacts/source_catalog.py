@@ -187,6 +187,44 @@ US_EQUITY_NASDAQ_SP500_PRICE_PROXY_SOURCE_PROFILES: tuple[
 US_EQUITY_NASDAQ_SP500_PRICE_PROXY_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "research:nasdaq_sp500_price_proxy",
 )
+US_EQUITY_TECHNICAL_DERIVED_INDICATOR_FIELDS: tuple[str, ...] = (
+    "atr14",
+    "close",
+    "drawdown_252d",
+    "ema20",
+    "ema50",
+    "high252",
+    "momentum_90d",
+    "provider_timestamp",
+    "realized_volatility_20d",
+    "realized_volatility_63d",
+    "rsi14",
+    "sma20",
+    "sma50",
+    "sma100",
+    "sma200",
+    "sma200_gap",
+    "trend_score",
+)
+US_EQUITY_TECHNICAL_SOURCE_PROFILES: tuple[dict[str, object], ...] = (
+    {
+        "source_id": "local_csv.us_equity_daily_ohlcv",
+        "source_name": "Local US equity daily OHLCV cache",
+        "provider_dataset": "us_equity_daily_ohlcv",
+        "produced_fields": US_EQUITY_TECHNICAL_DERIVED_INDICATOR_FIELDS,
+        "history_frequency": "daily",
+        "point_in_time_status": "cache_snapshot_required",
+        "publication_lag_policy": "us_equity_daily_close_t_plus_1",
+        "research_use_policy": (
+            "accepted when raw OHLCV cache hash, provider timestamp, and "
+            "technical transform version are pinned"
+        ),
+        "source_url": "",
+    },
+)
+US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES: tuple[str, ...] = (
+    "us_equity:nasdaq_sp500_smart_dca",
+)
 
 SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "crypto": {
@@ -209,6 +247,7 @@ SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     },
     "us_equity": {
         "implemented_families": (
+            "us_equity.technical_daily",
             "us_equity.nasdaq_sp500_context_daily",
             "us_equity.nasdaq_sp500_price_proxy_daily",
             "us_equity.nasdaq_sp500_public_context_daily",
@@ -277,6 +316,23 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "compatible_profiles": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
         "runtime_consumers": (),
         "research_consumers": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
+    },
+    "us_equity.technical_daily": {
+        "family": "us_equity.technical_daily",
+        "domain": "us_equity",
+        "bundle_type": "derived_indicators",
+        "bundle_id_prefix": "us_equity.technical.daily",
+        "canonical_input": "derived_indicators",
+        "transform": "technical.daily_ohlcv.v1",
+        "provider_dataset": "us_equity_daily_ohlcv",
+        "freshness_policy": "us_equity_daily_close_t_plus_1",
+        "minimum_history_rows": 252,
+        "symbols": ("QQQ", "SPY"),
+        "derived_indicator_fields": US_EQUITY_TECHNICAL_DERIVED_INDICATOR_FIELDS,
+        "source_profiles": US_EQUITY_TECHNICAL_SOURCE_PROFILES,
+        "compatible_profiles": US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES,
+        "runtime_consumers": US_EQUITY_TECHNICAL_COMPATIBLE_PROFILES,
+        "research_consumers": (),
     },
     "us_equity.nasdaq_sp500_public_context_daily": {
         "family": "us_equity.nasdaq_sp500_public_context_daily",

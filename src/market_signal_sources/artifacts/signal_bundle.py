@@ -10,6 +10,9 @@ from typing import Any
 import pandas as pd
 
 from market_signal_sources.derived.crypto.btc_cycle import compute_btc_cycle_indicators
+from market_signal_sources.derived.technical_indicators import (
+    compute_daily_technical_indicators,
+)
 
 
 MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION = "market_signal_bundle.v1"
@@ -143,6 +146,78 @@ def build_btc_cycle_signal_bundle(
             "research:ibit_btc_ahr999_mayer_precomputed",
             "research:ibit_btc_ahr999_mayer_precomputed_variants",
         ),
+    )
+
+
+def build_daily_technical_signal_bundle(
+    ohlcv_by_symbol: Mapping[str, pd.DataFrame],
+    *,
+    domain: str,
+    bundle_id_prefix: str,
+    as_of: str,
+    provider: str = "local_csv",
+    provider_dataset: str,
+    raw_artifact_sha256: str,
+    transform: str = "technical.daily_ohlcv.v1",
+    source_repo: str = "QuantStrategyLab/MarketSignalSources",
+    source_version: str = "0.1.0",
+    code_commit: str = "0000000000000000000000000000000000000000",
+    generated_at: str,
+    provider_timestamp: str | None = None,
+    freshness_status: str = FRESHNESS_FRESH,
+    freshness_policy: str = "daily_close_t_plus_1",
+    max_age_hours: int = 36,
+    license_scope: str = "internal_runtime",
+    generated_by: str = "market_signal_sources.local_csv",
+    compatible_profiles: Iterable[str],
+    min_history: int = 252,
+) -> dict[str, Any]:
+    """Build a market_signal_bundle.v1 daily technical derived_indicators payload."""
+
+    normalized_as_of = _normalize_date(as_of)
+    normalized_provider_timestamp = (
+        _non_empty(provider_timestamp, "provider_timestamp")
+        if provider_timestamp is not None
+        else f"{normalized_as_of}T00:00:00Z"
+    )
+    indicators_by_symbol: dict[str, dict[str, Any]] = {}
+    for raw_symbol, ohlcv in ohlcv_by_symbol.items():
+        symbol = _non_empty(raw_symbol, "ohlcv_by_symbol key").upper()
+        indicators = compute_daily_technical_indicators(
+            ohlcv,
+            as_of=normalized_as_of,
+            min_history=int(min_history),
+        )
+        indicators["provider_timestamp"] = normalized_provider_timestamp
+        indicators_by_symbol[symbol] = indicators
+    if not indicators_by_symbol:
+        raise ValueError("ohlcv_by_symbol must include at least one symbol")
+
+    return build_derived_indicator_signal_bundle(
+        domain=domain,
+        bundle_id=f"{_non_empty(bundle_id_prefix, 'bundle_id_prefix')}.{normalized_as_of}",
+        as_of=normalized_as_of,
+        generated_at=generated_at,
+        symbols=tuple(indicators_by_symbol),
+        derived_indicators=indicators_by_symbol,
+        freshness={
+            "policy": freshness_policy,
+            "max_age_hours": int(max_age_hours),
+            "provider_timestamp": normalized_provider_timestamp,
+            "status": freshness_status,
+        },
+        provenance={
+            "source_repo": _non_empty(source_repo, "source_repo"),
+            "source_version": _non_empty(source_version, "source_version"),
+            "code_commit": _non_empty(code_commit, "code_commit"),
+            "provider": _non_empty(provider, "provider"),
+            "provider_dataset": _non_empty(provider_dataset, "provider_dataset"),
+            "raw_artifact_sha256": _non_empty(raw_artifact_sha256, "raw_artifact_sha256"),
+            "transform": _non_empty(transform, "transform"),
+            "license_scope": _non_empty(license_scope, "license_scope"),
+            "generated_by": _non_empty(generated_by, "generated_by"),
+        },
+        compatible_profiles=compatible_profiles,
     )
 
 
