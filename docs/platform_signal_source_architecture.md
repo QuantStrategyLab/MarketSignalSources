@@ -31,6 +31,8 @@ The platform-facing outputs are:
   registry itself.
 - `market_signal_source_families.v1`: family-level catalog for canonical input,
   transform, freshness policy, produced fields, and compatible consumers.
+- `market_signal_source_family_catalog_manifest.v1`: manifest for the source
+  family catalog itself.
 
 ## Design Pressure
 
@@ -127,8 +129,8 @@ Each new family should define:
 The family catalog should be updated before runtime consumers are added. It is a
 small compatibility map, not a provider registry or live service definition.
 CI can read it through `python -m market_signal_sources.cli.list_signal_source_families`.
-If it is published as JSON, CI should validate it with `--validate-json` and
-`--require-all-known-families` before platform handoff. That validation also
+For platform handoff, publish it with `--output-dir` and validate the linked
+manifest with `--validate-manifest` and `--require-all-known-families`. That validation also
 checks each family's `compatible_profiles` against the consumer contract registry,
 and rejects a family that does not produce the symbols or indicator fields its
 declared consumers require.

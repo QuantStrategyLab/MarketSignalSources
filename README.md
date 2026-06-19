@@ -173,9 +173,17 @@ python -m market_signal_sources.cli.list_signal_source_families \
   --pretty
 ```
 
+Publish the catalog as a hash-pinned artifact and manifest:
+
 ```bash
 python -m market_signal_sources.cli.list_signal_source_families \
-  --validate-json ./data/output/signal_source_families.json \
+  --output-dir ./data/output/source_catalog \
+  --pretty
+```
+
+```bash
+python -m market_signal_sources.cli.list_signal_source_families \
+  --validate-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
   --require-all-known-families \
   --pretty
 ```

@@ -36,6 +36,7 @@ from .artifacts.quality_report import (
 )
 from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
 from .artifacts.source_catalog import (
+    SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
     SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
     compatible_profiles_for_signal_source_family,
     known_signal_source_families,
@@ -44,6 +45,9 @@ from .artifacts.source_catalog import (
     signal_source_family_record,
     validate_signal_source_family_catalog,
     validate_signal_source_family_catalog_file,
+    validate_signal_source_family_catalog_manifest,
+    write_signal_source_family_catalog,
+    write_signal_source_family_catalog_artifacts,
 )
 from .artifacts.validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
@@ -76,6 +80,7 @@ __all__ = [
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
+    "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
     "QUALITY_REPORT_SCHEMA_VERSION",
     "CONSUMER_REQUIRED_INDICATOR_FIELDS",
@@ -98,6 +103,7 @@ __all__ = [
     "signal_source_family_record",
     "validate_signal_source_family_catalog",
     "validate_signal_source_family_catalog_file",
+    "validate_signal_source_family_catalog_manifest",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
@@ -116,6 +122,8 @@ __all__ = [
     "validate_ohlcv_quality_report_file",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
+    "write_signal_source_family_catalog",
+    "write_signal_source_family_catalog_artifacts",
     "write_ohlcv_quality_report",
     "write_research_export_manifest",
     "write_signal_bundle_artifacts",

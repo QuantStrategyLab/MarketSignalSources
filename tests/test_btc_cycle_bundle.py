@@ -23,6 +23,10 @@ from market_signal_sources.artifacts.source_catalog import (
     signal_source_family_catalog_payload,
     signal_source_family_record,
     validate_signal_source_family_catalog,
+    validate_signal_source_family_catalog_file,
+    validate_signal_source_family_catalog_manifest,
+    write_signal_source_family_catalog,
+    write_signal_source_family_catalog_artifacts,
 )
 from market_signal_sources.artifacts.quality_report import (
     QualityReportValidationError,
@@ -460,6 +464,105 @@ def test_signal_source_family_catalog_validation_rejects_contract_gap(
 
     with pytest.raises(ValueError, match="missing required indicator fields"):
         validate_signal_source_family_catalog(payload)
+
+
+def test_signal_source_family_catalog_can_publish_manifest(
+    tmp_path,
+    capsys,
+) -> None:
+    output_json = tmp_path / "catalog" / "signal_source_families.json"
+
+    summary = write_signal_source_family_catalog(
+        output_json,
+        families=("crypto.btc_cycle_daily",),
+    )
+
+    assert summary["path"] == str(output_json)
+    assert summary["schema_version"] == "market_signal_source_families.v1"
+    assert summary["family_count"] == 1
+    assert summary["all_consumer_contracts_satisfied"] is True
+    assert summary["sha256"] == _sha256(output_json)
+
+    validate_summary = validate_signal_source_family_catalog_file(
+        output_json,
+        require_all_known_families=True,
+    )
+    assert validate_summary["all_known_families_present"] is True
+    assert validate_summary["consumer_contract_coverage"][
+        "crypto.btc_cycle_daily"
+    ]["consumer_count"] == 4
+
+    output_dir = tmp_path / "catalog-artifacts"
+    manifest_summary = write_signal_source_family_catalog_artifacts(output_dir)
+    catalog_path = output_dir / "signal_source_families.json"
+    manifest_path = output_dir / "signal_source_families.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest_summary["manifest_path"] == str(manifest_path)
+    assert manifest_summary["catalog_path"] == str(catalog_path)
+    assert manifest_summary["manifest_schema_version"] == (
+        "market_signal_source_family_catalog_manifest.v1"
+    )
+    assert manifest_summary["catalog_schema_version"] == (
+        "market_signal_source_families.v1"
+    )
+    assert manifest_summary["catalog_sha256"] == _sha256(catalog_path)
+    assert manifest_summary["all_known_families_present"] is True
+    assert manifest_summary["all_consumer_contracts_satisfied"] is True
+    assert manifest["catalog_path"] == "signal_source_families.json"
+
+    validation_summary = validate_signal_source_family_catalog_manifest(
+        manifest_path,
+        require_all_known_families=True,
+    )
+    assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
+    assert validation_summary["catalog_sha256"] == _sha256(catalog_path)
+
+    cli_output_dir = tmp_path / "cli-catalog"
+    result = list_families_main(
+        [
+            "--output-dir",
+            str(cli_output_dir),
+            "--pretty",
+        ]
+    )
+    assert result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    cli_manifest_path = cli_output_dir / "signal_source_families.manifest.json"
+    assert cli_summary["manifest_path"] == str(cli_manifest_path)
+    assert cli_summary["catalog_sha256"] == _sha256(
+        cli_output_dir / "signal_source_families.json"
+    )
+
+    validate_result = list_families_main(
+        [
+            "--validate-manifest",
+            str(cli_manifest_path),
+            "--require-all-known-families",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_validate_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_summary["manifest_sha256"] == _sha256(cli_manifest_path)
+
+    catalog_payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog_path.write_text(
+        json.dumps(catalog_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="catalog_sha256 mismatch"):
+        validate_signal_source_family_catalog_manifest(manifest_path)
+
+
+def test_signal_source_family_catalog_rejects_sensitive_fields(tmp_path) -> None:
+    catalog_path = tmp_path / "signal_source_families.json"
+    payload = signal_source_family_catalog_payload()
+    payload["token"] = "should-not-publish"
+    catalog_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="forbidden sensitive key"):
+        validate_signal_source_family_catalog_file(catalog_path)
 
 
 def test_signal_bundle_publication_index_upserts_manifest_tree(tmp_path) -> None:

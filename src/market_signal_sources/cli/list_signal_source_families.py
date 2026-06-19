@@ -8,6 +8,9 @@ import sys
 from market_signal_sources.artifacts.source_catalog import (
     signal_source_family_catalog_payload,
     validate_signal_source_family_catalog_file,
+    validate_signal_source_family_catalog_manifest,
+    write_signal_source_family_catalog,
+    write_signal_source_family_catalog_artifacts,
 )
 
 
@@ -16,16 +19,51 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.validate_json is not None:
-            if args.family:
-                raise ValueError("provide --validate-json without --family")
+        if args.validate_manifest is not None:
+            if (
+                args.validate_json is not None
+                or args.output_json is not None
+                or args.output_dir is not None
+                or args.family
+            ):
+                raise ValueError(
+                    "provide --validate-manifest without --validate-json, "
+                    "--family, --output-json, or --output-dir"
+                )
+            payload = validate_signal_source_family_catalog_manifest(
+                args.validate_manifest,
+                require_all_known_families=args.require_all_known_families,
+            )
+        elif args.validate_json is not None:
+            if (
+                args.output_json is not None
+                or args.output_dir is not None
+                or args.family
+            ):
+                raise ValueError(
+                    "provide --validate-json without --family, --output-json, "
+                    "or --output-dir"
+                )
             payload = validate_signal_source_family_catalog_file(
                 args.validate_json,
                 require_all_known_families=args.require_all_known_families,
             )
         elif args.require_all_known_families:
             raise ValueError(
-                "--require-all-known-families is only valid with --validate-json"
+                "--require-all-known-families is only valid with --validate-json "
+                "or --validate-manifest"
+            )
+        elif args.output_json is not None and args.output_dir is not None:
+            raise ValueError("provide either --output-json or --output-dir, not both")
+        elif args.output_dir is not None:
+            payload = write_signal_source_family_catalog_artifacts(
+                args.output_dir,
+                families=args.family,
+            )
+        elif args.output_json is not None:
+            payload = write_signal_source_family_catalog(
+                args.output_json,
+                families=args.family,
             )
         else:
             payload = signal_source_family_catalog_payload(families=args.family)
@@ -49,6 +87,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-json",
         help="Validate a signal source family catalog JSON artifact.",
+    )
+    parser.add_argument(
+        "--validate-manifest",
+        help="Validate a signal source family catalog manifest and linked catalog.",
+    )
+    parser.add_argument(
+        "--output-json",
+        help="Write the catalog JSON artifact and print hash metadata.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help=(
+            "Write signal_source_families.json and "
+            "signal_source_families.manifest.json under this directory."
+        ),
     )
     parser.add_argument(
         "--require-all-known-families",
