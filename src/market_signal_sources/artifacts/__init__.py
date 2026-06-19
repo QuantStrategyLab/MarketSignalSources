@@ -7,6 +7,7 @@ from .signal_bundle import (
     MARKET_SIGNAL_INDEX_SCHEMA_VERSION,
     MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
     build_btc_cycle_signal_bundle,
+    build_derived_indicator_signal_bundle,
     write_signal_bundle_artifacts,
 )
 from .consumer_contracts import (
@@ -64,6 +65,7 @@ __all__ = [
     "SignalBundleValidationError",
     "QualityReportValidationError",
     "build_btc_cycle_signal_bundle",
+    "build_derived_indicator_signal_bundle",
     "build_ohlcv_quality_report",
     "consumer_contract_for",
     "consumer_contract_registry_payload",

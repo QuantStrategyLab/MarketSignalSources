@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from os import PathLike
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,68 @@ MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION = "market_signal_manifest.v1"
 MARKET_SIGNAL_INDEX_SCHEMA_VERSION = "market_signal_index.v1"
 CANONICAL_INPUT_DERIVED_INDICATORS = "derived_indicators"
 FRESHNESS_FRESH = "fresh"
+
+
+def build_derived_indicator_signal_bundle(
+    *,
+    domain: str,
+    bundle_id: str,
+    as_of: str,
+    generated_at: str,
+    symbols: Iterable[str],
+    derived_indicators: Mapping[str, Mapping[str, Any]],
+    freshness: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    compatible_profiles: Iterable[str],
+    min_strategy_contract: str = "derived_indicators+portfolio_snapshot",
+) -> dict[str, Any]:
+    """Build a market_signal_bundle.v1 derived_indicators envelope."""
+
+    normalized_as_of = _normalize_date(as_of)
+    normalized_symbols = [
+        _non_empty(symbol, "symbols item")
+        for symbol in symbols
+    ]
+    if not normalized_symbols:
+        raise ValueError("symbols must include at least one symbol")
+    normalized_profiles = [
+        _non_empty(profile, "compatible_profiles item")
+        for profile in compatible_profiles
+    ]
+    if not normalized_profiles:
+        raise ValueError("compatible_profiles must include at least one profile")
+
+    indicators_by_symbol: dict[str, dict[str, Any]] = {}
+    source_indicators = {
+        str(symbol).strip(): payload
+        for symbol, payload in derived_indicators.items()
+    }
+    for symbol in normalized_symbols:
+        payload = source_indicators.get(symbol)
+        if not isinstance(payload, Mapping) or not payload:
+            raise ValueError(f"derived_indicators missing non-empty payload for {symbol}")
+        indicators_by_symbol[symbol] = dict(payload)
+
+    return {
+        "schema_version": MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION,
+        "bundle_id": _non_empty(bundle_id, "bundle_id"),
+        "bundle_type": CANONICAL_INPUT_DERIVED_INDICATORS,
+        "domain": _non_empty(domain, "domain"),
+        "consumer_contract": {
+            "canonical_input": CANONICAL_INPUT_DERIVED_INDICATORS,
+            "compatible_profiles": normalized_profiles,
+            "min_strategy_contract": _non_empty(
+                min_strategy_contract,
+                "min_strategy_contract",
+            ),
+        },
+        "as_of": normalized_as_of,
+        "generated_at": _non_empty(generated_at, "generated_at"),
+        "symbols": normalized_symbols,
+        CANONICAL_INPUT_DERIVED_INDICATORS: indicators_by_symbol,
+        "freshness": dict(freshness),
+        "provenance": dict(provenance),
+    }
 
 
 def build_btc_cycle_signal_bundle(
@@ -41,29 +104,20 @@ def build_btc_cycle_signal_bundle(
     indicators = compute_btc_cycle_indicators(ohlcv, as_of=normalized_as_of)
     indicators["provider_timestamp"] = f"{normalized_as_of}T00:00:00Z"
 
-    return {
-        "schema_version": MARKET_SIGNAL_BUNDLE_SCHEMA_VERSION,
-        "bundle_id": f"crypto.btc.derived_indicators.{normalized_as_of}",
-        "bundle_type": CANONICAL_INPUT_DERIVED_INDICATORS,
-        "domain": "crypto",
-        "consumer_contract": {
-            "canonical_input": CANONICAL_INPUT_DERIVED_INDICATORS,
-            "compatible_profiles": ["us_equity:ibit_smart_dca"],
-            "min_strategy_contract": "derived_indicators+portfolio_snapshot",
-        },
-        "as_of": normalized_as_of,
-        "generated_at": _non_empty(generated_at, "generated_at"),
-        "symbols": [normalized_symbol],
-        CANONICAL_INPUT_DERIVED_INDICATORS: {
-            normalized_symbol: indicators,
-        },
-        "freshness": {
+    return build_derived_indicator_signal_bundle(
+        domain="crypto",
+        bundle_id=f"crypto.btc.derived_indicators.{normalized_as_of}",
+        as_of=normalized_as_of,
+        generated_at=generated_at,
+        symbols=(normalized_symbol,),
+        derived_indicators={normalized_symbol: indicators},
+        freshness={
             "policy": freshness_policy,
             "max_age_hours": int(max_age_hours),
             "provider_timestamp": f"{normalized_as_of}T00:00:00Z",
             "status": freshness_status,
         },
-        "provenance": {
+        provenance={
             "source_repo": _non_empty(source_repo, "source_repo"),
             "source_version": _non_empty(source_version, "source_version"),
             "code_commit": _non_empty(code_commit, "code_commit"),
@@ -74,7 +128,8 @@ def build_btc_cycle_signal_bundle(
             "license_scope": "internal_runtime",
             "generated_by": "market_signal_sources.local_csv",
         },
-    }
+        compatible_profiles=("us_equity:ibit_smart_dca",),
+    )
 
 
 def write_signal_bundle_artifacts(

@@ -105,6 +105,11 @@ Each new family should define:
 - consumer contract entries
 - validation tests for manifest, contract coverage, and sensitive-field rejection
 
+New transforms should reuse the generic `derived_indicators` bundle builder for
+the artifact envelope, then keep market-specific calculations inside `derived.*`
+modules. Do not add a new market-specific envelope builder unless the runtime
+contract itself changes.
+
 ## Compatibility Rules
 
 - Additive fields are allowed when old consumers can ignore them.

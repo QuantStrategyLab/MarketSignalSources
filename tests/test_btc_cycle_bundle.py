@@ -10,6 +10,7 @@ import pytest
 
 from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
+    build_derived_indicator_signal_bundle,
     write_signal_bundle_artifacts,
 )
 from market_signal_sources.artifacts.quality_report import (
@@ -314,6 +315,56 @@ def test_write_signal_bundle_artifacts_self_validates_written_index(tmp_path) ->
     )
     with pytest.raises(SignalBundleValidationError, match="provider_dataset"):
         validate_signal_bundle_index(paths["index"])
+
+
+def test_generic_derived_indicator_bundle_can_publish_non_btc_signal(tmp_path) -> None:
+    bundle = build_derived_indicator_signal_bundle(
+        domain="us_equity",
+        bundle_id="us_equity.index_breadth.derived_indicators.2025-09-17",
+        as_of="2025-09-17",
+        generated_at="2025-09-17T00:15:00Z",
+        symbols=("QQQ",),
+        derived_indicators={
+            "QQQ": {
+                "above_sma200_ratio": 0.62,
+                "provider_timestamp": "2025-09-17T00:00:00Z",
+            }
+        },
+        freshness={
+            "policy": "us_equity_daily_close_t_plus_1",
+            "max_age_hours": 36,
+            "provider_timestamp": "2025-09-17T00:00:00Z",
+            "status": "fresh",
+        },
+        provenance={
+            "source_repo": "QuantStrategyLab/MarketSignalSources",
+            "source_version": "0.1.0",
+            "code_commit": "0000000000000000000000000000000000000000",
+            "provider": "local_csv",
+            "provider_dataset": "qqq_index_breadth_daily",
+            "raw_artifact_sha256": "1" * 64,
+            "transform": "us_equity.index_breadth.v1",
+            "license_scope": "internal_runtime",
+            "generated_by": "market_signal_sources.local_csv",
+        },
+        compatible_profiles=("research:us_equity_index_breadth",),
+    )
+
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+    summary = validate_signal_bundle_index(
+        paths["index"],
+        as_of="2025-09-18",
+        bundle_id="us_equity.index_breadth.derived_indicators.2025-09-17",
+    )
+    written_bundle = json.loads(paths["signal_bundle"].read_text(encoding="utf-8"))
+
+    assert written_bundle["domain"] == "us_equity"
+    assert summary["bundle_id"] == (
+        "us_equity.index_breadth.derived_indicators.2025-09-17"
+    )
+    assert summary["indicator_fields_by_symbol"] == {
+        "QQQ": ("above_sma200_ratio", "provider_timestamp")
+    }
 
 
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
