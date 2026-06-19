@@ -89,6 +89,7 @@ US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES: tuple[dict[str, object], ...] = 
         "produced_fields": ("vix_percentile",),
         "history_frequency": "daily",
         "point_in_time_status": "public_history_with_execution_lag",
+        "max_allowed_lag_days": 10,
         "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
         "research_use_policy": (
             "accepted for research when the downloaded CSV, as_of, and "
@@ -103,6 +104,7 @@ US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES: tuple[dict[str, object], ...] = 
         "produced_fields": ("cape_percentile",),
         "history_frequency": "monthly",
         "point_in_time_status": "public_revised_history_snapshot_required",
+        "max_allowed_lag_days": 120,
         "publication_lag_policy": "month-end or later; never same-day daily timing",
         "research_use_policy": (
             "accepted for low-frequency valuation research only when the raw "
@@ -921,14 +923,26 @@ def _source_profile_summary(record: Mapping[str, Any]) -> dict[str, Any]:
                     f"signal source family {family} source profile {source_id} "
                     f"{field} is required"
                 )
-        profile_summaries.append(
-            {
-                "source_id": source_id,
-                "produced_fields": produced_fields,
-                "point_in_time_status": str(profile["point_in_time_status"]),
-                "history_frequency": str(profile["history_frequency"]),
-            }
-        )
+        max_allowed_lag_days = profile.get("max_allowed_lag_days")
+        if max_allowed_lag_days is not None:
+            if (
+                not isinstance(max_allowed_lag_days, int)
+                or isinstance(max_allowed_lag_days, bool)
+                or max_allowed_lag_days < 0
+            ):
+                raise ValueError(
+                    f"signal source family {family} source profile {source_id} "
+                    "max_allowed_lag_days must be a non-negative integer"
+                )
+        profile_summary: dict[str, object] = {
+            "source_id": source_id,
+            "produced_fields": produced_fields,
+            "point_in_time_status": str(profile["point_in_time_status"]),
+            "history_frequency": str(profile["history_frequency"]),
+        }
+        if max_allowed_lag_days is not None:
+            profile_summary["max_allowed_lag_days"] = max_allowed_lag_days
+        profile_summaries.append(profile_summary)
 
     covered_fields = sorted(
         {

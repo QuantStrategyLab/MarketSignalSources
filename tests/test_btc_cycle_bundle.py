@@ -464,6 +464,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
             "produced_fields": ["vix_percentile"],
             "history_frequency": "daily",
             "point_in_time_status": "public_history_with_execution_lag",
+            "max_allowed_lag_days": 10,
             "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
             "research_use_policy": (
                 "accepted for research when the downloaded CSV, as_of, and "
@@ -478,6 +479,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
             "produced_fields": ["cape_percentile"],
             "history_frequency": "monthly",
             "point_in_time_status": "public_revised_history_snapshot_required",
+            "max_allowed_lag_days": 120,
             "publication_lag_policy": "month-end or later; never same-day daily timing",
             "research_use_policy": (
                 "accepted for low-frequency valuation research only when the raw "
@@ -586,6 +588,12 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
         "fred.vixcls",
         "shiller.cape_monthly",
     ]
+    assert validation_summary["source_profile_coverage"][
+        "us_equity.nasdaq_sp500_public_context_daily"
+    ]["profiles"][0]["max_allowed_lag_days"] == 10
+    assert validation_summary["source_profile_coverage"][
+        "us_equity.nasdaq_sp500_public_context_daily"
+    ]["profiles"][1]["max_allowed_lag_days"] == 120
     assert validation_summary["sha256"] == _sha256(catalog_path)
 
     legacy_payload = signal_source_family_catalog_payload()
@@ -668,6 +676,31 @@ def test_signal_source_family_catalog_validation_rejects_source_profile_gap(
         ValueError,
         match="produced fields are not derived_indicator_fields",
     ):
+        validate_signal_source_family_catalog(payload)
+
+
+def test_signal_source_family_catalog_validation_rejects_bad_source_lag_policy(
+    monkeypatch,
+) -> None:
+    original = SIGNAL_SOURCE_FAMILIES["us_equity.nasdaq_sp500_public_context_daily"]
+    first_profile = dict(original["source_profiles"][0])
+    first_profile["max_allowed_lag_days"] = -1
+    monkeypatch.setitem(
+        SIGNAL_SOURCE_FAMILIES,
+        "us_equity.nasdaq_sp500_public_context_daily",
+        {
+            **original,
+            "source_profiles": (
+                first_profile,
+                *tuple(original["source_profiles"][1:]),
+            ),
+        },
+    )
+    payload = signal_source_family_catalog_payload(
+        families=("us_equity.nasdaq_sp500_public_context_daily",)
+    )
+
+    with pytest.raises(ValueError, match="max_allowed_lag_days"):
         validate_signal_source_family_catalog(payload)
 
 

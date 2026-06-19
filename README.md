@@ -191,6 +191,8 @@ neither is a runtime strategy default. Their catalog records include source
 profiles for FRED `VIXCLS` and Shiller CAPE snapshots; the full context family
 also requires point-in-time index breadth history. The breadth profile explicitly
 rejects current-constituent backfills because they create survivorship bias.
+FRED VIX and Shiller CAPE profiles also expose `max_allowed_lag_days`, matching
+the public context quality-report freshness gates.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
