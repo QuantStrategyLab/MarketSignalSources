@@ -51,6 +51,7 @@ from market_signal_sources.artifacts.consumption import (
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_signal_injection_plan_file,
+    validate_runtime_signal_injection_plan_matches_audit,
     write_consumption_audit_artifact,
     write_runtime_signal_injection_plan_artifact,
 )
@@ -1785,6 +1786,12 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert validate_runtime_signal_injection_plan_file(injection_plan_path)[
         "sha256"
     ] == injection_plan_artifact_summary["sha256"]
+    plan_audit_match = validate_runtime_signal_injection_plan_matches_audit(
+        injection_plan_path,
+        audit_artifact_path,
+    )
+    assert plan_audit_match["matched"] is True
+    assert plan_audit_match["consumer"] == "us_equity:ibit_smart_dca"
 
     index_consumption_summary = audit_signal_consumption(
         platform_handoff_index=cli_index_path,
@@ -1907,6 +1914,41 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_plan_summary["sha256"] == cli_plan_artifact_summary[
         "sha256"
     ]
+    validate_plan_match_result = audit_consumption_main(
+        [
+            "--validate-runtime-plan-with-audit",
+            str(cli_plan_artifact_path),
+            "--audit-json",
+            str(cli_audit_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert validate_plan_match_result == 0
+    cli_validate_plan_match = json.loads(capsys.readouterr().out)
+    assert cli_validate_plan_match["schema_version"] == (
+        "market_signal_runtime_plan_audit_match.v1"
+    )
+    assert cli_validate_plan_match["matched"] is True
+    assert cli_validate_plan_match["plan_sha256"] == cli_plan_artifact_summary[
+        "sha256"
+    ]
+    bad_plan = json.loads(cli_plan_artifact_path.read_text(encoding="utf-8"))
+    bad_plan["as_of"] = "2025-09-17"
+    bad_plan_path = tmp_path / "bad_runtime_injection_plan.json"
+    bad_plan_path.write_text(
+        json.dumps(bad_plan, sort_keys=True),
+        encoding="utf-8",
+    )
+    bad_plan_match_result = audit_consumption_main(
+        [
+            "--validate-runtime-plan-with-audit",
+            str(bad_plan_path),
+            "--audit-json",
+            str(cli_audit_artifact_path),
+        ]
+    )
+    assert bad_plan_match_result == 2
+    assert "as_of!=as_of" in capsys.readouterr().err
 
     with pytest.raises(ValueError, match="consumer is required"):
         audit_signal_consumption(platform_handoff_manifest=handoff_path, consumer="")

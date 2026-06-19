@@ -319,6 +319,11 @@ python -m market_signal_sources.cli.audit_signal_consumption \
 python -m market_signal_sources.cli.audit_signal_consumption \
   --validate-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
   --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-plan-with-audit ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
+  --audit-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
+  --pretty
 ```
 
 For platform lookup across dated handoffs, publish a handoff index and validate

@@ -19,8 +19,12 @@ MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION = "market_signal_consumption_audi
 MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION = (
     "market_signal_runtime_injection_plan.v1"
 )
+MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION = (
+    "market_signal_runtime_plan_audit_match.v1"
+)
 _ARTIFACT_TYPE = "market_signal_consumption_audit"
 _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
+_PLAN_AUDIT_MATCH_ARTIFACT_TYPE = "market_signal_runtime_plan_audit_match"
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
         "api_key",
@@ -213,6 +217,54 @@ def validate_runtime_signal_injection_plan_file(
     }
 
 
+def validate_runtime_signal_injection_plan_matches_audit(
+    plan_path: str | PathLike[str],
+    audit_path: str | PathLike[str],
+) -> dict[str, Any]:
+    """Validate a runtime injection plan against its source consumption audit."""
+
+    resolved_plan_path = Path(plan_path)
+    resolved_audit_path = Path(audit_path)
+    plan_summary = validate_runtime_signal_injection_plan_file(resolved_plan_path)
+    audit_summary = validate_consumption_audit_file(resolved_audit_path)
+    plan_payload = _load_json_mapping(
+        resolved_plan_path,
+        artifact_name="runtime injection plan",
+    )
+    audit_payload = _load_json_mapping(
+        resolved_audit_path,
+        artifact_name="consumption audit",
+    )
+    if (
+        audit_payload.get("ready_for_runtime_injection") is not True
+        or audit_payload.get("runtime_injection_allowed") is not True
+    ):
+        raise ValueError("consumption audit is not runtime-injectable")
+    for plan_field, audit_field in _PLAN_AUDIT_MATCH_FIELDS:
+        if plan_payload.get(plan_field) != audit_payload.get(audit_field):
+            raise ValueError(
+                "runtime injection plan audit mismatch: "
+                f"{plan_field}!={audit_field}"
+            )
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION,
+        "artifact_type": _PLAN_AUDIT_MATCH_ARTIFACT_TYPE,
+        "matched": True,
+        "plan_path": plan_summary["path"],
+        "audit_path": audit_summary["path"],
+        "plan_sha256": plan_summary["sha256"],
+        "audit_sha256": audit_summary["sha256"],
+        "consumer": plan_summary["consumer"],
+        "market_data_key": plan_summary["market_data_key"],
+        "payload_field": plan_summary["payload_field"],
+        "target_path": plan_summary["target_path"],
+        "canonical_input": plan_summary["canonical_input"],
+        "bundle_id": plan_summary["bundle_id"],
+        "as_of": plan_summary["as_of"],
+        "freshness_status": plan_summary["freshness_status"],
+    }
+
+
 def write_consumption_audit_artifact(
     path: str | PathLike[str],
     audit_summary: Mapping[str, Any],
@@ -387,6 +439,32 @@ def _market_data_key_for_canonical_input(canonical_input: str) -> str:
     return canonical_input
 
 
+_PLAN_AUDIT_MATCH_FIELDS = (
+    ("consumer", "consumer"),
+    ("canonical_input", "canonical_input"),
+    ("bundle_id", "bundle_id"),
+    ("as_of", "as_of"),
+    ("freshness_status", "freshness_status"),
+    ("signal_bundle_manifest_path", "signal_bundle_manifest_path"),
+    ("signal_bundle_manifest_sha256", "signal_bundle_manifest_sha256"),
+    ("handoff_manifest_path", "handoff_manifest_path"),
+    ("handoff_manifest_sha256", "handoff_manifest_sha256"),
+    (
+        "source_family_catalog_manifest_sha256",
+        "source_family_catalog_manifest_sha256",
+    ),
+    (
+        "consumer_contract_registry_manifest_sha256",
+        "consumer_contract_registry_manifest_sha256",
+    ),
+    ("market_data_key", "runtime_market_data_key"),
+    ("payload_field", "runtime_payload_field"),
+    ("source_families", "source_families"),
+    ("matched_source_families", "matched_source_families"),
+    ("consumer_contracts", "consumer_contracts"),
+)
+
+
 def _required_string(payload: Mapping[str, Any], field: str) -> str:
     value = str(payload.get(field, "")).strip()
     if not value:
@@ -520,6 +598,14 @@ def _required_sha256(payload: Mapping[str, Any], field: str) -> str:
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise ValueError(f"consumption audit invalid sha256 field: {field}")
     return value
+
+
+def _load_json_mapping(path: Path, *, artifact_name: str) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{artifact_name} artifact must be a JSON object")
+    return payload
 
 
 def _reject_sensitive_keys(value: Any, *, path: str = "") -> None:

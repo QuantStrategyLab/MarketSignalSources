@@ -53,10 +53,12 @@ from .research_handoff import (
 from .consumption import (
     MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION,
     MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION,
+    MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION,
     audit_signal_consumption,
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_signal_injection_plan_file,
+    validate_runtime_signal_injection_plan_matches_audit,
     write_consumption_audit_artifact,
     write_runtime_signal_injection_plan_artifact,
 )
@@ -103,6 +105,7 @@ __all__ = [
     "MARKET_SIGNAL_RESEARCH_HANDOFF_SCHEMA_VERSION",
     "MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION",
     "MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION",
+    "MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
@@ -149,6 +152,7 @@ __all__ = [
     "validate_platform_signal_handoff_manifest",
     "validate_consumption_audit_file",
     "validate_runtime_signal_injection_plan_file",
+    "validate_runtime_signal_injection_plan_matches_audit",
     "write_research_export_manifest",
     "write_research_signal_handoff_manifest",
     "write_consumption_audit_artifact",

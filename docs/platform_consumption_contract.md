@@ -140,6 +140,11 @@ python -m market_signal_sources.cli.audit_signal_consumption \
 python -m market_signal_sources.cli.audit_signal_consumption \
   --validate-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
   --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-plan-with-audit ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
+  --audit-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
+  --pretty
 ```
 
 For runtime handoffs, the audit summary must show
@@ -209,6 +214,7 @@ plan after the audit succeeds:
 from market_signal_sources.artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
+    validate_runtime_signal_injection_plan_matches_audit,
 )
 
 audit = audit_signal_consumption(
@@ -224,6 +230,10 @@ market_data[plan["market_data_key"]] = bundle[plan["payload_field"]]
 
 `runtime_signal_injection_plan()` rejects research handoff audits and any audit
 summary that is not explicitly marked runtime-injectable.
+For saved artifacts, `validate_runtime_signal_injection_plan_matches_audit()`
+checks that the runtime plan still matches the exact audit identity, bundle,
+manifest hashes, source families, consumer contracts, and payload path before
+deployment consumes it.
 
 Failure policy:
 
