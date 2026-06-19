@@ -181,6 +181,15 @@ manifest with `--validate-manifest` and `--require-all-known-families`. That val
 checks each family's `compatible_profiles` against the consumer contract registry,
 and rejects a family that does not produce the symbols or indicator fields its
 declared consumers require.
+Release jobs that publish one market layer at a time can use `--domain`, for
+example `--domain crypto` or `--domain us_equity`, instead of spelling out every
+implemented family. Domain filtering only selects implemented families from the
+catalog roadmap; `--domain hk_equity` currently publishes an empty family list
+because Hong Kong equity has planned families but no implemented artifact
+contract yet.
+Runtime platform handoffs match against a family's `runtime_consumers`; research
+consumers remain compatible profiles for backtest and analysis handoffs, but do
+not satisfy the runtime platform matching gate.
 
 The catalog also includes a top-level `domain_coverage` roadmap. It lists the
 implemented source families and planned family names for `crypto`, `us_equity`,

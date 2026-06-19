@@ -25,10 +25,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 or args.output_json is not None
                 or args.output_dir is not None
                 or args.family
+                or args.domain
             ):
                 raise ValueError(
                     "provide --validate-manifest without --validate-json, "
-                    "--family, --output-json, or --output-dir"
+                    "--family, --domain, --output-json, or --output-dir"
                 )
             payload = validate_signal_source_family_catalog_manifest(
                 args.validate_manifest,
@@ -39,10 +40,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.output_json is not None
                 or args.output_dir is not None
                 or args.family
+                or args.domain
             ):
                 raise ValueError(
-                    "provide --validate-json without --family, --output-json, "
-                    "or --output-dir"
+                    "provide --validate-json without --family, --domain, "
+                    "--output-json, or --output-dir"
                 )
             payload = validate_signal_source_family_catalog_file(
                 args.validate_json,
@@ -55,18 +57,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif args.output_json is not None and args.output_dir is not None:
             raise ValueError("provide either --output-json or --output-dir, not both")
+        elif args.family and args.domain:
+            raise ValueError("provide either --family or --domain, not both")
         elif args.output_dir is not None:
             payload = write_signal_source_family_catalog_artifacts(
                 args.output_dir,
                 families=args.family,
+                domains=args.domain,
             )
         elif args.output_json is not None:
             payload = write_signal_source_family_catalog(
                 args.output_json,
                 families=args.family,
+                domains=args.domain,
             )
         else:
-            payload = signal_source_family_catalog_payload(families=args.family)
+            payload = signal_source_family_catalog_payload(
+                families=args.family,
+                domains=args.domain,
+            )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -83,6 +92,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--family",
         action="append",
         help="Limit output to a known signal source family. Can be provided multiple times.",
+    )
+    parser.add_argument(
+        "--domain",
+        action="append",
+        help=(
+            "Limit output to implemented families for a known market domain "
+            "such as crypto, us_equity, or hk_equity. Can be provided multiple times."
+        ),
     )
     parser.add_argument(
         "--validate-json",

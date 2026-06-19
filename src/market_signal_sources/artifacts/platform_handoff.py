@@ -246,6 +246,10 @@ def write_platform_signal_handoff_manifest(
         consumer_registry_manifest_path,
         require_all_known_consumers=require_all_known_consumers,
     )
+    _validate_registry_consumer(
+        consumer_registry_summary,
+        consumer=consumer,
+    )
     matched_source_families = _matching_source_families(
         source_catalog_manifest_path,
         signal_bundle_summary=signal_bundle_summary,
@@ -343,6 +347,10 @@ def validate_platform_signal_handoff_manifest(
     consumer_registry_summary = validate_consumer_contract_registry_manifest(
         consumer_registry_manifest_path,
         require_all_known_consumers=require_all_known_consumers,
+    )
+    _validate_registry_consumer(
+        consumer_registry_summary,
+        consumer=target_consumer,
     )
     matched_source_families = _matching_source_families(
         source_catalog_manifest_path,
@@ -750,12 +758,12 @@ def _matching_source_families(
             continue
         if str(record.get("freshness_policy", "")).strip() != freshness_policy:
             continue
-        compatible_profiles = {
+        runtime_consumers = {
             str(profile).strip()
-            for profile in record.get("compatible_profiles", ()) or ()
+            for profile in record.get("runtime_consumers", ()) or ()
             if str(profile).strip()
         }
-        if target_consumer is not None and target_consumer not in compatible_profiles:
+        if target_consumer is not None and target_consumer not in runtime_consumers:
             continue
         catalog_symbols = {
             str(symbol).strip()
@@ -819,6 +827,22 @@ def _validate_matching_source_families(
         "platform handoff source catalog missing family for transform: "
         f"{transform}"
     )
+
+
+def _validate_registry_consumer(
+    consumer_registry_summary: Mapping[str, Any],
+    *,
+    consumer: str | None,
+) -> None:
+    target_consumer = str(consumer or "").strip()
+    if not target_consumer:
+        return
+    consumers = {str(item) for item in consumer_registry_summary["consumers"]}
+    if target_consumer not in consumers:
+        raise ValueError(
+            "platform handoff consumer contract registry missing consumer: "
+            f"{target_consumer}"
+        )
 
 
 def _validate_signal_bundle_manifest_for_handoff(

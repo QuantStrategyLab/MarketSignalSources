@@ -337,6 +337,17 @@ def compatible_profiles_for_signal_source_family(family: str) -> tuple[str, ...]
     return tuple(str(profile) for profile in record["compatible_profiles"])
 
 
+def implemented_signal_source_families_for_domain(domain: str) -> tuple[str, ...]:
+    """Return implemented source families for a known market domain."""
+
+    normalized = str(domain or "").strip()
+    if normalized not in SIGNAL_SOURCE_DOMAIN_COVERAGE:
+        known = ", ".join(sorted(SIGNAL_SOURCE_DOMAIN_COVERAGE))
+        raise ValueError(f"unknown signal source domain: {domain!r}; known: {known}")
+    implemented = SIGNAL_SOURCE_DOMAIN_COVERAGE[normalized]["implemented_families"]
+    return tuple(str(family) for family in implemented)
+
+
 def source_profiles_for_signal_source_family(family: str) -> tuple[dict[str, Any], ...]:
     """Return source-profile requirements for a known signal source family."""
 
@@ -362,14 +373,18 @@ def signal_source_domain_coverage_payload() -> dict[str, Any]:
 def signal_source_family_catalog_payload(
     *,
     families: Iterable[str] | None = None,
+    domains: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Return JSON-safe metadata for all known signal source families."""
 
-    selected_families = (
-        tuple(families)
-        if families is not None
-        else known_signal_source_families()
-    )
+    if families is not None and domains is not None:
+        raise ValueError("provide either families or domains, not both")
+    if domains is not None:
+        selected_families = _families_for_domains(domains)
+    elif families is not None:
+        selected_families = tuple(families)
+    else:
+        selected_families = known_signal_source_families()
     return {
         "schema_version": SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
         "domain_coverage": signal_source_domain_coverage_payload(),
@@ -384,12 +399,16 @@ def write_signal_source_family_catalog(
     path: str | PathLike[str],
     *,
     families: Iterable[str] | None = None,
+    domains: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Write the signal source family catalog and return hash metadata."""
 
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = signal_source_family_catalog_payload(families=families)
+    payload = signal_source_family_catalog_payload(
+        families=families,
+        domains=domains,
+    )
     output_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -401,6 +420,7 @@ def write_signal_source_family_catalog_artifacts(
     output_dir: str | PathLike[str],
     *,
     families: Iterable[str] | None = None,
+    domains: Iterable[str] | None = None,
     catalog_filename: str = "signal_source_families.json",
     manifest_filename: str = "signal_source_families.manifest.json",
 ) -> dict[str, Any]:
@@ -421,6 +441,7 @@ def write_signal_source_family_catalog_artifacts(
     catalog_summary = write_signal_source_family_catalog(
         catalog_path,
         families=families,
+        domains=domains,
     )
     manifest = _source_catalog_manifest(
         catalog_summary,
@@ -568,6 +589,17 @@ def validate_signal_source_family_catalog_file(
 
 def _json_safe_record(record: dict[str, object]) -> dict[str, Any]:
     return _json_safe_value(record)
+
+
+def _families_for_domains(domains: Iterable[str]) -> tuple[str, ...]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for domain in domains:
+        for family in implemented_signal_source_families_for_domain(domain):
+            if family not in seen:
+                seen.add(family)
+                selected.append(family)
+    return tuple(selected)
 
 
 def _json_safe_value(value: Any) -> Any:

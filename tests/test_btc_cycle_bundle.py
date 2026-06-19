@@ -18,6 +18,7 @@ from market_signal_sources.artifacts.signal_bundle import (
 from market_signal_sources.artifacts.source_catalog import (
     SIGNAL_SOURCE_FAMILIES,
     compatible_profiles_for_signal_source_family,
+    implemented_signal_source_families_for_domain,
     known_signal_source_families,
     signal_source_domain_coverage_payload,
     signal_source_family_consumer_contract_coverage,
@@ -439,6 +440,10 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert signal_source_domain_coverage_payload()["hk_equity"][
         "implemented_families"
     ] == []
+    assert implemented_signal_source_families_for_domain("crypto") == (
+        "crypto.btc_cycle_daily",
+    )
+    assert implemented_signal_source_families_for_domain("hk_equity") == ()
     assert record["domain"] == "crypto"
     assert record["canonical_input"] == "derived_indicators"
     assert record["transform"] == bundle["provenance"]["transform"]
@@ -587,6 +592,26 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
     ]
 
+    domain_result = list_families_main(["--domain", "us_equity", "--pretty"])
+    assert domain_result == 0
+    domain_payload = json.loads(capsys.readouterr().out)
+    assert [family["family"] for family in domain_payload["families"]] == [
+        "us_equity.nasdaq_sp500_context_daily",
+        "us_equity.nasdaq_sp500_price_proxy_daily",
+        "us_equity.nasdaq_sp500_public_context_daily",
+    ]
+
+    empty_domain_result = list_families_main(["--domain", "hk_equity", "--pretty"])
+    assert empty_domain_result == 0
+    empty_domain_payload = json.loads(capsys.readouterr().out)
+    assert empty_domain_payload["families"] == []
+    assert empty_domain_payload["domain_coverage"]["hk_equity"][
+        "planned_families"
+    ] == [
+        "hk_equity.index_breadth_daily",
+        "hk_equity.fx_liquidity_context",
+    ]
+
     catalog_path = tmp_path / "signal_source_families.json"
     catalog_path.write_text(
         json.dumps(signal_source_family_catalog_payload(), indent=2, sort_keys=True),
@@ -669,6 +694,16 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     unknown_result = list_families_main(["--family", "unknown.family"])
     assert unknown_result == 2
     assert "unknown signal source family" in capsys.readouterr().err
+
+    unknown_domain_result = list_families_main(["--domain", "unknown_domain"])
+    assert unknown_domain_result == 2
+    assert "unknown signal source domain" in capsys.readouterr().err
+
+    mixed_selector_result = list_families_main(
+        ["--family", "crypto.btc_cycle_daily", "--domain", "crypto"]
+    )
+    assert mixed_selector_result == 2
+    assert "either --family or --domain" in capsys.readouterr().err
 
 
 def test_signal_source_family_catalog_validation_rejects_contract_gap(
@@ -1830,6 +1865,88 @@ def test_platform_signal_handoff_rejects_missing_matching_source_family(
             tmp_path / "platform_handoff.json",
             signal_bundle_manifest=bundle_paths["manifest"],
             source_family_catalog_manifest=non_crypto_catalog_summary["manifest_path"],
+            consumer_contract_registry_manifest=contract_summary["manifest_path"],
+            consumer="us_equity:ibit_smart_dca",
+        )
+
+
+def test_platform_signal_handoff_rejects_research_consumer_runtime_handoff(
+    tmp_path,
+) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "bundle" / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle_paths = write_signal_bundle_artifacts(
+        tmp_path / "bundle",
+        bundle,
+        quality_report_path=quality_report_path,
+    )
+    catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "source-catalog",
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "contracts",
+    )
+
+    with pytest.raises(ValueError, match="missing family for consumer and transform"):
+        write_platform_signal_handoff_manifest(
+            tmp_path / "platform_handoff.json",
+            signal_bundle_manifest=bundle_paths["manifest"],
+            source_family_catalog_manifest=catalog_summary["manifest_path"],
+            consumer_contract_registry_manifest=contract_summary["manifest_path"],
+            consumer="research:ibit_btc_ahr999_precomputed",
+        )
+
+
+def test_platform_signal_handoff_rejects_registry_missing_runtime_consumer(
+    tmp_path,
+) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "bundle" / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle_paths = write_signal_bundle_artifacts(
+        tmp_path / "bundle",
+        bundle,
+        quality_report_path=quality_report_path,
+    )
+    catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "source-catalog",
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "contracts",
+        consumers=("research:nasdaq_sp500_price_proxy",),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="consumer contract registry missing consumer",
+    ):
+        write_platform_signal_handoff_manifest(
+            tmp_path / "platform_handoff.json",
+            signal_bundle_manifest=bundle_paths["manifest"],
+            source_family_catalog_manifest=catalog_summary["manifest_path"],
             consumer_contract_registry_manifest=contract_summary["manifest_path"],
             consumer="us_equity:ibit_smart_dca",
         )

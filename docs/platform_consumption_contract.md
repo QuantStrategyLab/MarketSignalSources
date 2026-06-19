@@ -88,6 +88,11 @@ Required platform checks:
 - registry contains the runtime consumer and all required fields are present
 - freshness policy is acceptable for the strategy's evaluation lag
 
+Platform handoff matching uses the catalog family's `runtime_consumers`, not the
+broader `compatible_profiles` list. `research:*` consumers must use
+`market_signal_research_handoff.v1`; they are contract-checkable for backtests
+but are not runtime-injectable.
+
 The unified consumption audit command runs those checks through the same
 validator path and returns a `market_signal_consumption_audit.v1` summary:
 

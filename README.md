@@ -209,6 +209,20 @@ python -m market_signal_sources.cli.list_signal_source_families \
   --pretty
 ```
 
+You can also publish by implemented market domain instead of hand-maintaining a
+family list:
+
+```bash
+python -m market_signal_sources.cli.list_signal_source_families \
+  --domain us_equity \
+  --output-dir ./data/output/us_equity_source_catalog \
+  --pretty
+```
+
+`--domain hk_equity` currently returns an empty `families` list while preserving
+the `domain_coverage` roadmap. That is intentional: Hong Kong equity entries are
+planned, not runtime-compatible, until real family records and tests exist.
+
 Publish the catalog as a hash-pinned artifact and manifest:
 
 ```bash
