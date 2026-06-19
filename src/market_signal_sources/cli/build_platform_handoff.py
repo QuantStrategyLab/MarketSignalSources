@@ -6,7 +6,10 @@ import json
 import sys
 
 from market_signal_sources.artifacts.platform_handoff import (
+    upsert_platform_signal_handoff_index,
+    validate_platform_signal_handoff_index,
     validate_platform_signal_handoff_manifest,
+    write_platform_signal_handoff_index,
     write_platform_signal_handoff_manifest,
 )
 
@@ -16,12 +19,61 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.validate_manifest is not None:
+        if args.validate_index is not None:
+            if (
+                args.validate_manifest is not None
+                or _has_single_manifest_inputs(args)
+                or _has_index_write_inputs(args)
+            ):
+                raise ValueError(
+                    "provide --validate-index without output or source inputs"
+                )
+            payload = validate_platform_signal_handoff_index(
+                args.validate_index,
+                consumer=args.consumer,
+                as_of=args.as_of,
+                require_all_known_families=args.require_all_known_families,
+                require_all_known_consumers=args.require_all_known_consumers,
+            )
+        elif args.output_index is not None:
+            if (
+                _has_single_manifest_inputs(args)
+                or args.validate_manifest is not None
+                or args.upsert_index is not None
+            ):
+                raise ValueError(
+                    "provide --output-index with --handoff-manifest only"
+                )
+            if not args.handoff_manifests:
+                raise ValueError("--output-index requires at least one --handoff-manifest")
+            payload = write_platform_signal_handoff_index(
+                args.output_index,
+                args.handoff_manifests,
+                require_all_known_families=args.require_all_known_families,
+                require_all_known_consumers=args.require_all_known_consumers,
+            )
+        elif args.upsert_index is not None:
+            if _has_single_manifest_inputs(args) or args.validate_manifest is not None:
+                raise ValueError(
+                    "provide --upsert-index with exactly one --handoff-manifest"
+                )
+            if len(args.handoff_manifests or ()) != 1:
+                raise ValueError(
+                    "--upsert-index requires exactly one --handoff-manifest"
+                )
+            payload = upsert_platform_signal_handoff_index(
+                args.upsert_index,
+                args.handoff_manifests[0],
+                require_all_known_families=args.require_all_known_families,
+                require_all_known_consumers=args.require_all_known_consumers,
+            )
+        elif args.validate_manifest is not None:
             if (
                 args.output_manifest is not None
                 or args.signal_bundle_manifest is not None
                 or args.source_family_catalog_manifest is not None
                 or args.consumer_contract_registry_manifest is not None
+                or args.handoff_manifests
             ):
                 raise ValueError(
                     "provide --validate-manifest without --output-manifest or "
@@ -34,6 +86,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 require_all_known_consumers=args.require_all_known_consumers,
             )
         else:
+            if args.handoff_manifests:
+                raise ValueError(
+                    "provide --handoff-manifest only with --output-index or --upsert-index"
+                )
             if (
                 args.output_manifest is None
                 or args.signal_bundle_manifest is None
@@ -73,8 +129,33 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--consumer-contract-registry-manifest")
     parser.add_argument("--output-manifest")
     parser.add_argument(
+        "--handoff-manifest",
+        action="append",
+        dest="handoff_manifests",
+        help=(
+            "Platform handoff manifest to include in --output-index or "
+            "--upsert-index. May be provided multiple times for --output-index."
+        ),
+    )
+    parser.add_argument(
+        "--output-index",
+        help="Write a platform handoff index from one or more --handoff-manifest values.",
+    )
+    parser.add_argument(
+        "--upsert-index",
+        help="Add or replace exactly one --handoff-manifest in a platform handoff index.",
+    )
+    parser.add_argument(
         "--validate-manifest",
         help="Validate an existing platform signal handoff manifest.",
+    )
+    parser.add_argument(
+        "--validate-index",
+        help="Validate and resolve an existing platform signal handoff index.",
+    )
+    parser.add_argument(
+        "--as-of",
+        help="With --validate-index, select the latest handoff at or before this date.",
     )
     parser.add_argument(
         "--consumer",
@@ -92,6 +173,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--pretty", action="store_true")
     return parser
+
+
+def _has_single_manifest_inputs(args: argparse.Namespace) -> bool:
+    return any(
+        value is not None
+        for value in (
+            args.output_manifest,
+            args.signal_bundle_manifest,
+            args.source_family_catalog_manifest,
+            args.consumer_contract_registry_manifest,
+        )
+    )
+
+
+def _has_index_write_inputs(args: argparse.Namespace) -> bool:
+    return (
+        args.output_index is not None
+        or args.upsert_index is not None
+        or bool(args.handoff_manifests)
+    )
 
 
 if __name__ == "__main__":

@@ -35,8 +35,13 @@ from .artifacts.quality_report import (
     write_ohlcv_quality_report,
 )
 from .artifacts.platform_handoff import (
+    MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION,
     MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION,
+    resolve_platform_signal_handoff_manifest_from_index,
+    upsert_platform_signal_handoff_index,
+    validate_platform_signal_handoff_index,
     validate_platform_signal_handoff_manifest,
+    write_platform_signal_handoff_index,
     write_platform_signal_handoff_manifest,
 )
 from .artifacts.research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
@@ -84,6 +89,7 @@ __all__ = [
     "MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION",
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
+    "MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
@@ -104,6 +110,7 @@ __all__ = [
     "compute_btc_cycle_indicators",
     "known_signal_consumers",
     "known_signal_source_families",
+    "resolve_platform_signal_handoff_manifest_from_index",
     "signal_source_family_consumer_contract_coverage",
     "signal_source_family_catalog_payload",
     "signal_source_family_record",
@@ -126,15 +133,18 @@ __all__ = [
     "validate_signal_bundle_manifest_for_consumer",
     "validate_ohlcv_quality_report",
     "validate_ohlcv_quality_report_file",
+    "validate_platform_signal_handoff_index",
     "validate_platform_signal_handoff_manifest",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
     "write_signal_source_family_catalog",
     "write_signal_source_family_catalog_artifacts",
     "write_ohlcv_quality_report",
+    "write_platform_signal_handoff_index",
     "write_platform_signal_handoff_manifest",
     "write_research_export_manifest",
     "write_signal_bundle_artifacts",
     "write_signal_bundle_publication_index",
     "upsert_signal_bundle_publication_index",
+    "upsert_platform_signal_handoff_index",
 ]

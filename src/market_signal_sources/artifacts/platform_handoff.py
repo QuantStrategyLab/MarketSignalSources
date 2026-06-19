@@ -20,7 +20,11 @@ from .validation import (
 
 
 MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION = "market_signal_platform_handoff.v1"
+MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION = (
+    "market_signal_platform_handoff_index.v1"
+)
 _ARTIFACT_TYPE = "market_signal_platform_handoff"
+_INDEX_ARTIFACT_TYPE = "market_signal_platform_handoff_index"
 _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
     {
         "api_key",
@@ -33,6 +37,166 @@ _FORBIDDEN_SENSITIVE_KEY_FRAGMENTS = frozenset(
         "token",
     }
 )
+
+
+def write_platform_signal_handoff_index(
+    index_path: str | PathLike[str],
+    handoff_manifests: Iterable[str | PathLike[str]],
+    *,
+    generated_at: str | None = None,
+    require_all_known_families: bool = False,
+    require_all_known_consumers: bool = False,
+) -> dict[str, Any]:
+    """Write a platform handoff index for selecting dated handoff manifests."""
+
+    target_path = Path(index_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    index_root = target_path.parent.resolve()
+    entries = [
+        _platform_handoff_index_entry(
+            Path(handoff_manifest),
+            index_root=index_root,
+            require_all_known_families=require_all_known_families,
+            require_all_known_consumers=require_all_known_consumers,
+        )
+        for handoff_manifest in handoff_manifests
+    ]
+    if not entries:
+        raise ValueError("handoff_manifests must include at least one manifest")
+    payload = {
+        "schema_version": MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION,
+        "artifact_type": _INDEX_ARTIFACT_TYPE,
+        "generated_at": generated_at or _default_index_generated_at(entries),
+        "handoffs": sorted(
+            entries,
+            key=lambda entry: (
+                str(entry.get("as_of", "")),
+                str(entry.get("bundle_id", "")),
+                str(entry.get("consumer", "")),
+                str(entry.get("handoff_manifest_path", "")),
+            ),
+        ),
+    }
+    target_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return validate_platform_signal_handoff_index(
+        target_path,
+        require_all_known_families=require_all_known_families,
+        require_all_known_consumers=require_all_known_consumers,
+    )
+
+
+def upsert_platform_signal_handoff_index(
+    index_path: str | PathLike[str],
+    handoff_manifest: str | PathLike[str],
+    *,
+    generated_at: str | None = None,
+    require_all_known_families: bool = False,
+    require_all_known_consumers: bool = False,
+) -> dict[str, Any]:
+    """Add or replace one handoff manifest entry in a platform handoff index."""
+
+    target_path = Path(index_path)
+    index_root = target_path.parent.resolve()
+    entries: dict[tuple[str, str, str], Path] = {}
+    if target_path.exists():
+        existing = _read_json_mapping(target_path, label="platform handoff index")
+        for raw_entry in existing.get("handoffs", ()) or ():
+            if not isinstance(raw_entry, Mapping):
+                continue
+            resolved_path = _resolve_handoff_index_manifest_path(
+                index_root,
+                raw_entry.get("handoff_manifest_path"),
+            )
+            entries[_index_entry_identity(raw_entry)] = resolved_path
+
+    new_entry = _platform_handoff_index_entry(
+        Path(handoff_manifest),
+        index_root=index_root,
+        require_all_known_families=require_all_known_families,
+        require_all_known_consumers=require_all_known_consumers,
+    )
+    entries[_index_entry_identity(new_entry)] = Path(handoff_manifest)
+    return write_platform_signal_handoff_index(
+        target_path,
+        entries.values(),
+        generated_at=generated_at,
+        require_all_known_families=require_all_known_families,
+        require_all_known_consumers=require_all_known_consumers,
+    )
+
+
+def validate_platform_signal_handoff_index(
+    path: str | PathLike[str],
+    *,
+    consumer: str | None = None,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    as_of: str | None = None,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+    require_all_known_families: bool = False,
+    require_all_known_consumers: bool = False,
+) -> dict[str, Any]:
+    """Validate a platform handoff index and resolve the latest matching entry."""
+
+    index_path = Path(path)
+    index = _read_json_mapping(index_path, label="platform handoff index")
+    _validate_platform_handoff_index_shape(index)
+    handoff_manifest_path = _resolve_platform_handoff_manifest_from_index(
+        index_path,
+        index,
+        consumer=consumer,
+        expected_canonical_input=expected_canonical_input,
+        as_of=as_of,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    handoff_summary = validate_platform_signal_handoff_manifest(
+        handoff_manifest_path,
+        consumer=consumer,
+        require_all_known_families=require_all_known_families,
+        require_all_known_consumers=require_all_known_consumers,
+        expected_canonical_input=expected_canonical_input,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
+    selected_entry = _selected_index_entry(
+        index_path,
+        index,
+        handoff_manifest_path=handoff_manifest_path,
+    )
+    _validate_index_entry_summary_consistency(selected_entry, handoff_summary)
+    return {
+        **handoff_summary,
+        "index_path": str(index_path.resolve()),
+        "index_schema_version": str(index["schema_version"]),
+        "index_artifact_type": str(index["artifact_type"]),
+        "index_handoff_count": len(index["handoffs"]),
+        "handoff_manifest_path": str(handoff_manifest_path.resolve()),
+        "handoff_manifest_sha256": sha256_file(handoff_manifest_path),
+    }
+
+
+def resolve_platform_signal_handoff_manifest_from_index(
+    path: str | PathLike[str],
+    *,
+    consumer: str | None = None,
+    expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
+    as_of: str | None = None,
+    accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
+) -> Path:
+    """Resolve the latest matching handoff manifest path from an index."""
+
+    index_path = Path(path)
+    index = _read_json_mapping(index_path, label="platform handoff index")
+    _validate_platform_handoff_index_shape(index)
+    return _resolve_platform_handoff_manifest_from_index(
+        index_path,
+        index,
+        consumer=consumer,
+        expected_canonical_input=expected_canonical_input,
+        as_of=as_of,
+        accepted_freshness_statuses=accepted_freshness_statuses,
+    )
 
 
 def write_platform_signal_handoff_manifest(
@@ -182,6 +346,232 @@ def validate_platform_signal_handoff_manifest(
     )
     _validate_summary_consistency(payload, expected_summary)
     return expected_summary
+
+
+def _platform_handoff_index_entry(
+    handoff_manifest_path: Path,
+    *,
+    index_root: Path,
+    require_all_known_families: bool,
+    require_all_known_consumers: bool,
+) -> dict[str, Any]:
+    resolved_handoff_path = handoff_manifest_path.resolve()
+    try:
+        relative_handoff_path = resolved_handoff_path.relative_to(index_root)
+    except ValueError as exc:
+        raise ValueError(
+            "handoff_manifest_path must stay inside index directory tree"
+        ) from exc
+    summary = validate_platform_signal_handoff_manifest(
+        resolved_handoff_path,
+        require_all_known_families=require_all_known_families,
+        require_all_known_consumers=require_all_known_consumers,
+    )
+    return {
+        "handoff_manifest_path": relative_handoff_path.as_posix(),
+        "handoff_manifest_sha256": sha256_file(resolved_handoff_path),
+        "consumer": summary["consumer"],
+        "canonical_input": summary["canonical_input"],
+        "bundle_id": summary["bundle_id"],
+        "as_of": summary["as_of"],
+        "freshness_status": summary["freshness_status"],
+        "source_families": list(summary["source_families"]),
+        "consumer_contracts": list(summary["consumer_contracts"]),
+        "all_known_source_families_present": summary[
+            "all_known_source_families_present"
+        ],
+        "all_consumer_contracts_satisfied": summary[
+            "all_consumer_contracts_satisfied"
+        ],
+        "all_known_consumers_present": summary["all_known_consumers_present"],
+    }
+
+
+def _validate_platform_handoff_index_shape(index: Mapping[str, Any]) -> None:
+    _validate_no_sensitive_fields(index, path="platform_handoff_index")
+    if index.get("schema_version") != MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION:
+        raise ValueError(
+            "unsupported platform handoff index schema_version: "
+            f"{index.get('schema_version')!r}"
+        )
+    if index.get("artifact_type") != _INDEX_ARTIFACT_TYPE:
+        raise ValueError(
+            "platform handoff index artifact_type mismatch: "
+            f"{index.get('artifact_type')!r}"
+        )
+    handoffs = index.get("handoffs")
+    if not isinstance(handoffs, list) or not handoffs:
+        raise ValueError("platform handoff index handoffs must be a non-empty list")
+    for raw_entry in handoffs:
+        if not isinstance(raw_entry, Mapping):
+            raise ValueError("platform handoff index entries must be mappings")
+        for field in (
+            "handoff_manifest_path",
+            "handoff_manifest_sha256",
+            "canonical_input",
+            "bundle_id",
+            "as_of",
+            "freshness_status",
+            "source_families",
+            "consumer_contracts",
+        ):
+            if not str(raw_entry.get(field, "")).strip() and field not in {
+                "source_families",
+                "consumer_contracts",
+            }:
+                raise ValueError(f"platform handoff index entry missing field: {field}")
+        for field in ("source_families", "consumer_contracts"):
+            if not isinstance(raw_entry.get(field), list):
+                raise ValueError(
+                    f"platform handoff index entry {field} must be a list"
+                )
+
+
+def _resolve_platform_handoff_manifest_from_index(
+    index_path: Path,
+    index: Mapping[str, Any],
+    *,
+    consumer: str | None,
+    expected_canonical_input: str,
+    as_of: str | None,
+    accepted_freshness_statuses: Iterable[str],
+) -> Path:
+    accepted = {str(item).strip().lower() for item in accepted_freshness_statuses}
+    target_consumer = str(consumer or "").strip()
+    target_as_of = str(as_of).strip() if as_of is not None else None
+    candidates: list[Mapping[str, Any]] = []
+    for raw_entry in index["handoffs"]:
+        entry = dict(raw_entry)
+        canonical_input = str(entry.get("canonical_input", "")).strip()
+        freshness = str(entry.get("freshness_status", "")).strip().lower()
+        entry_as_of = str(entry.get("as_of", "")).strip()
+        if canonical_input != expected_canonical_input:
+            continue
+        if freshness not in accepted:
+            continue
+        if target_as_of is not None and entry_as_of > target_as_of:
+            continue
+        if target_consumer and not _index_entry_matches_consumer(
+            entry,
+            consumer=target_consumer,
+        ):
+            continue
+        candidates.append(entry)
+    if not candidates:
+        raise ValueError("platform handoff index has no matching handoff entry")
+    selected = max(
+        candidates,
+        key=lambda entry: (
+            str(entry.get("as_of", "")),
+            str(entry.get("bundle_id", "")),
+            str(entry.get("consumer", "")),
+            str(entry.get("handoff_manifest_path", "")),
+        ),
+    )
+    handoff_path = _resolve_handoff_index_manifest_path(
+        index_path.parent.resolve(),
+        selected["handoff_manifest_path"],
+    )
+    expected_sha256 = str(selected["handoff_manifest_sha256"]).strip().lower()
+    actual_sha256 = sha256_file(handoff_path)
+    if actual_sha256 != expected_sha256:
+        raise ValueError(
+            "platform handoff index handoff_manifest_sha256 mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}"
+        )
+    return handoff_path
+
+
+def _selected_index_entry(
+    index_path: Path,
+    index: Mapping[str, Any],
+    *,
+    handoff_manifest_path: Path,
+) -> Mapping[str, Any]:
+    relative = handoff_manifest_path.resolve().relative_to(index_path.parent.resolve())
+    for raw_entry in index["handoffs"]:
+        if str(raw_entry.get("handoff_manifest_path", "")) == relative.as_posix():
+            return raw_entry
+    raise ValueError("platform handoff index selected entry is missing")
+
+
+def _validate_index_entry_summary_consistency(
+    entry: Mapping[str, Any],
+    summary: Mapping[str, Any],
+) -> None:
+    expected_values = {
+        "consumer": summary["consumer"],
+        "canonical_input": summary["canonical_input"],
+        "bundle_id": summary["bundle_id"],
+        "as_of": summary["as_of"],
+        "freshness_status": summary["freshness_status"],
+        "source_families": list(summary["source_families"]),
+        "consumer_contracts": list(summary["consumer_contracts"]),
+        "all_known_source_families_present": summary[
+            "all_known_source_families_present"
+        ],
+        "all_consumer_contracts_satisfied": summary[
+            "all_consumer_contracts_satisfied"
+        ],
+        "all_known_consumers_present": summary["all_known_consumers_present"],
+    }
+    for field, expected in expected_values.items():
+        if entry.get(field) != expected:
+            raise ValueError(
+                f"platform handoff index {field} mismatch: "
+                f"{entry.get(field)!r} != {expected!r}"
+            )
+
+
+def _index_entry_matches_consumer(
+    entry: Mapping[str, Any],
+    *,
+    consumer: str,
+) -> bool:
+    entry_consumer = str(entry.get("consumer", "")).strip()
+    if entry_consumer == consumer:
+        return True
+    contracts = entry.get("consumer_contracts")
+    return isinstance(contracts, list) and consumer in {str(item) for item in contracts}
+
+
+def _resolve_handoff_index_manifest_path(index_root: Path, value: object) -> Path:
+    relative_path = Path(str(value).strip())
+    if not str(value).strip():
+        raise ValueError("platform handoff index handoff_manifest_path must not be empty")
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError(
+            "platform handoff index handoff_manifest_path must stay inside index directory"
+        )
+    resolved = (index_root / relative_path).resolve()
+    try:
+        resolved.relative_to(index_root)
+    except ValueError as exc:
+        raise ValueError(
+            "platform handoff index handoff_manifest_path escapes index directory"
+        ) from exc
+    return resolved
+
+
+def _read_json_mapping(path: Path, *, label: str) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"{label} JSON root must be a mapping")
+    return dict(payload)
+
+
+def _default_index_generated_at(entries: Iterable[Mapping[str, Any]]) -> str:
+    latest_as_of = max(str(entry.get("as_of", "")) for entry in entries)
+    return f"{latest_as_of}T00:15:00Z"
+
+
+def _index_entry_identity(entry: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(entry.get("bundle_id", "")).strip(),
+        str(entry.get("as_of", "")).strip(),
+        str(entry.get("canonical_input", "")).strip(),
+    )
 
 
 def _platform_handoff_manifest(

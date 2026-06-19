@@ -36,6 +36,9 @@ The platform-facing outputs are:
 - `market_signal_platform_handoff.v1`: platform-facing manifest that pins the
   signal bundle manifest, source family catalog manifest, and consumer contract
   registry manifest as one release unit.
+- `market_signal_platform_handoff_index.v1`: platform-facing index that lets
+  consumers resolve the latest matching handoff by consumer, canonical input,
+  freshness, and `as_of`.
 
 ## Design Pressure
 
@@ -104,13 +107,15 @@ credential paths, or service lifecycle ownership.
 8. Write `market_signal_platform_handoff.v1` to pin the signal bundle manifest,
    source family catalog manifest, and consumer contract registry manifest as a
    single platform handoff unit.
-9. Strategy CI validates the handoff manifest before allowing a strategy config
+9. Upsert the handoff manifest into `market_signal_platform_handoff_index.v1`
+   when the platform needs a stable lookup entry across dated releases.
+10. Strategy CI validates the handoff manifest or handoff index before allowing a strategy config
    to reference the artifact. Strategy repositories should also compare the
    source catalog's transform and `compatible_profiles`, plus the registry's
    consumer entries, with their own expected consumer identifiers and required
    fields, so a hash-valid catalog or registry that omits the target strategy
    still fails before release.
-10. Runtime loads the validated bundle and injects only `derived_indicators`.
+11. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

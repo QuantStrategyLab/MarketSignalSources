@@ -217,6 +217,26 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --pretty
 ```
 
+For platform lookup across dated handoffs, publish a handoff index and validate
+it by consumer and `as_of`:
+
+```bash
+python -m market_signal_sources.cli.build_platform_handoff \
+  --output-index ./data/output/platform_handoffs/index.json \
+  --handoff-manifest ./data/output/platform_handoff.json \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+
+python -m market_signal_sources.cli.build_platform_handoff \
+  --validate-index ./data/output/platform_handoffs/index.json \
+  --consumer us_equity:ibit_smart_dca \
+  --as-of 2026-06-19 \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+```
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash
