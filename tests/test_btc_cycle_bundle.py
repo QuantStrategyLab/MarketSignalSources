@@ -12,6 +12,7 @@ from market_signal_sources.artifacts.signal_bundle import (
     build_btc_cycle_signal_bundle,
     build_daily_technical_signal_bundle,
     build_derived_indicator_signal_bundle,
+    build_semiconductor_rotation_signal_bundle,
     upsert_signal_bundle_publication_index,
     write_signal_bundle_artifacts,
     write_signal_bundle_publication_index,
@@ -87,6 +88,9 @@ from market_signal_sources.artifacts.validation import (
     validate_signal_bundle_manifest,
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
+from market_signal_sources.cli.build_semiconductor_rotation_bundle import (
+    main as build_semiconductor_main,
+)
 from market_signal_sources.cli.build_platform_handoff import main as handoff_main
 from market_signal_sources.cli.build_research_handoff import (
     main as research_handoff_main,
@@ -119,6 +123,9 @@ from market_signal_sources.derived.technical_indicators import (
     build_daily_technical_indicator_frame,
     compute_daily_technical_indicators,
 )
+from market_signal_sources.derived.us_equity import (
+    compute_semiconductor_rotation_indicators,
+)
 from market_signal_sources.providers import local_csv_provider_metadata
 
 
@@ -139,6 +146,24 @@ def _btc_frame(rows: int = 260) -> pd.DataFrame:
 def _technical_frame(rows: int = 270) -> pd.DataFrame:
     dates = pd.date_range("2025-01-01", periods=rows, freq="D")
     closes = [100.0 + index * 0.2 for index in range(rows)]
+    return pd.DataFrame(
+        {
+            "date": dates.date,
+            "open": closes,
+            "high": [value * 1.01 for value in closes],
+            "low": [value * 0.99 for value in closes],
+            "close": closes,
+            "volume": [1000.0 for _ in dates],
+        }
+    )
+
+
+def _semiconductor_frame(rows: int = 430, *, base: float = 100.0) -> pd.DataFrame:
+    dates = pd.date_range("2025-01-01", periods=rows, freq="D")
+    closes = [
+        base + index * 0.15 + math.sin(index / 7.0) * 2.0
+        for index in range(rows)
+    ]
     return pd.DataFrame(
         {
             "date": dates.date,
@@ -407,6 +432,90 @@ def test_daily_technical_signal_bundle_validates_for_nasdaq_runtime_consumer(tmp
     )
 
 
+def test_semiconductor_rotation_indicators_cover_runtime_contract_fields() -> None:
+    indicators = compute_semiconductor_rotation_indicators(
+        _semiconductor_frame(base=25.0),
+        _semiconductor_frame(base=400.0),
+        as_of="2026-03-06",
+    )
+
+    assert indicators["SOXL"]["price"] == pytest.approx(
+        _semiconductor_frame(base=25.0).iloc[-1]["close"]
+    )
+    assert indicators["SOXL"]["ma_trend"] is not None
+    soxx = indicators["SOXX"]
+    assert soxx["price"] == pytest.approx(
+        _semiconductor_frame(base=400.0).iloc[-1]["close"]
+    )
+    assert soxx["ma_trend"] is not None
+    assert soxx["ma20_slope"] is not None
+    assert soxx["rsi14"] is not None
+    assert soxx["rsi14_dynamic_threshold"] >= 70.0
+    assert soxx["bb_upper"] > soxx["bb_mid"] > soxx["bb_lower"]
+    assert soxx["realized_volatility_10"] is not None
+    assert soxx["realized_volatility_10_dynamic_threshold"] >= 0.50
+    assert soxx["realized_volatility_10_dynamic_sample_count"] >= 126.0
+
+
+def test_semiconductor_rotation_signal_bundle_validates_for_runtime_consumer(
+    tmp_path,
+) -> None:
+    soxl_csv = tmp_path / "soxl.csv"
+    soxx_csv = tmp_path / "soxx.csv"
+    _semiconductor_frame(base=25.0).to_csv(soxl_csv, index=False)
+    _semiconductor_frame(base=400.0).to_csv(soxx_csv, index=False)
+    bundle = build_semiconductor_rotation_signal_bundle(
+        _semiconductor_frame(base=25.0),
+        _semiconductor_frame(base=400.0),
+        as_of="2026-03-06",
+        provider_dataset="us_equity_semiconductor_daily_ohlcv",
+        raw_artifact_sha256=_sha256(soxl_csv) + _sha256(soxx_csv),
+        generated_at="2026-03-06T21:15:00Z",
+    )
+
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="us_equity:soxl_soxx_trend_income",
+    )
+    assert bundle["bundle_id"] == "us_equity.semiconductor_rotation.daily.2026-03-06"
+    assert set(bundle["symbols"]) == {"SOXL", "SOXX"}
+    assert bundle["derived_indicators"]["SOXX"]["provider_timestamp"] == (
+        "2026-03-06T00:00:00Z"
+    )
+
+
+def test_semiconductor_rotation_cli_writes_bundle_and_quality_reports(tmp_path) -> None:
+    soxl_csv = tmp_path / "soxl.csv"
+    soxx_csv = tmp_path / "soxx.csv"
+    output_dir = tmp_path / "bundle"
+    _semiconductor_frame(base=25.0).to_csv(soxl_csv, index=False)
+    _semiconductor_frame(base=400.0).to_csv(soxx_csv, index=False)
+
+    exit_code = build_semiconductor_main(
+        [
+            "--soxl-csv",
+            str(soxl_csv),
+            "--soxx-csv",
+            str(soxx_csv),
+            "--output-dir",
+            str(output_dir),
+            "--as-of",
+            "2026-03-06",
+            "--generated-at",
+            "2026-03-06T21:15:00Z",
+        ]
+    )
+
+    assert exit_code == 0
+    bundle = json.loads((output_dir / "signal_bundle.json").read_text(encoding="utf-8"))
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="us_equity:soxl_soxx_trend_income",
+    )
+    assert (output_dir / "quality_report.SOXL.json").exists()
+    assert (output_dir / "quality_report.SOXX.json").exists()
+
+
 def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None:
     input_csv = tmp_path / "btc.csv"
     _btc_frame().to_csv(input_csv, index=False)
@@ -509,6 +618,9 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     us_public_context_record = signal_source_family_record(
         "us_equity.nasdaq_sp500_public_context_daily"
     )
+    us_semiconductor_record = signal_source_family_record(
+        "us_equity.semiconductor_rotation_daily"
+    )
     us_technical_record = signal_source_family_record("us_equity.technical_daily")
     catalog = signal_source_family_catalog_payload()
 
@@ -517,6 +629,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
+        "us_equity.semiconductor_rotation_daily",
         "us_equity.technical_daily",
     )
     assert catalog["schema_version"] == "market_signal_source_families.v1"
@@ -525,6 +638,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         us_context_record,
         us_price_proxy_record,
         us_public_context_record,
+        us_semiconductor_record,
         us_technical_record,
     ]
     assert catalog["domain_coverage"]["crypto"]["implemented_families"] == [
@@ -532,6 +646,7 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     ]
     assert catalog["domain_coverage"]["us_equity"]["implemented_families"] == [
         "us_equity.technical_daily",
+        "us_equity.semiconductor_rotation_daily",
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
@@ -567,10 +682,14 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert runtime_coverage["known_runtime_consumers"] == (
         "us_equity:ibit_smart_dca",
         "us_equity:nasdaq_sp500_smart_dca",
+        "us_equity:soxl_soxx_trend_income",
     )
     assert runtime_coverage["runtime_consumer_source_families"] == {
         "us_equity:ibit_smart_dca": ("crypto.btc_cycle_daily",),
         "us_equity:nasdaq_sp500_smart_dca": ("us_equity.technical_daily",),
+        "us_equity:soxl_soxx_trend_income": (
+            "us_equity.semiconductor_rotation_daily",
+        ),
     }
     coverage = signal_source_family_consumer_contract_coverage(
         "crypto.btc_cycle_daily"
@@ -608,6 +727,31 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     )
     assert technical_coverage["consumer_count"] == 1
     assert technical_coverage["all_required_fields_present"] is True
+    semiconductor_coverage = signal_source_family_consumer_contract_coverage(
+        "us_equity.semiconductor_rotation_daily"
+    )
+    assert semiconductor_coverage["consumer_count"] == 1
+    assert semiconductor_coverage["all_required_fields_present"] is True
+    assert semiconductor_coverage["required_indicator_fields_by_consumer"][
+        "us_equity:soxl_soxx_trend_income"
+    ] == {
+        "SOXL": [
+            "price",
+            "ma_trend",
+        ],
+        "SOXX": [
+            "price",
+            "ma_trend",
+            "ma20",
+            "ma20_slope",
+            "rsi14",
+            "rsi14_dynamic_threshold",
+            "bb_upper",
+            "realized_volatility_10",
+            "realized_volatility_10_dynamic_threshold",
+            "realized_volatility_10_dynamic_sample_count",
+        ],
+    }
     assert us_coverage["required_indicator_fields_by_consumer"][
         "research:nasdaq_sp500_external_context_precomputed"
     ] == {
@@ -730,6 +874,7 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     domain_payload = json.loads(capsys.readouterr().out)
     assert [family["family"] for family in domain_payload["families"]] == [
         "us_equity.technical_daily",
+        "us_equity.semiconductor_rotation_daily",
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
@@ -762,14 +907,14 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     )
     assert validate_result == 0
     validation_summary = json.loads(capsys.readouterr().out)
-    assert validation_summary["family_count"] == 5
+    assert validation_summary["family_count"] == 6
     assert validation_summary["all_known_families_present"] is True
     assert validation_summary["domain_coverage_present"] is True
     assert validation_summary["domain_count"] == 3
     assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
-    assert validation_summary["implemented_family_count"] == 5
+    assert validation_summary["implemented_family_count"] == 6
     assert validation_summary["planned_family_count"] == 7
-    assert validation_summary["source_profile_count"] == 9
+    assert validation_summary["source_profile_count"] == 10
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["all_runtime_consumers_covered"] is True
     assert validation_summary["runtime_consumer_coverage"][
@@ -777,6 +922,9 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     ] == {
         "us_equity:ibit_smart_dca": ["crypto.btc_cycle_daily"],
         "us_equity:nasdaq_sp500_smart_dca": ["us_equity.technical_daily"],
+        "us_equity:soxl_soxx_trend_income": [
+            "us_equity.semiconductor_rotation_daily"
+        ],
     }
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
@@ -786,6 +934,9 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     ]["consumer_count"] == 1
     assert validation_summary["consumer_contract_coverage"][
         "us_equity.technical_daily"
+    ]["consumer_count"] == 1
+    assert validation_summary["consumer_contract_coverage"][
+        "us_equity.semiconductor_rotation_daily"
     ]["consumer_count"] == 1
     assert validation_summary["source_profile_coverage"][
         "us_equity.nasdaq_sp500_context_daily"
@@ -948,10 +1099,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
 
     assert summary["path"] == str(output_json)
     assert summary["schema_version"] == "market_signal_source_families.v1"
-    assert summary["family_count"] == 5
+    assert summary["family_count"] == 6
     assert summary["all_consumer_contracts_satisfied"] is True
     assert summary["domain_coverage_present"] is True
-    assert summary["source_profile_count"] == 9
+    assert summary["source_profile_count"] == 10
     assert summary["sha256"] == _sha256(output_json)
 
     validate_summary = validate_signal_source_family_catalog_file(
@@ -981,10 +1132,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert manifest_summary["all_known_families_present"] is True
     assert manifest_summary["domain_count"] == 3
     assert manifest_summary["planned_family_count"] == 7
-    assert manifest_summary["source_profile_count"] == 9
+    assert manifest_summary["source_profile_count"] == 10
     assert manifest_summary["all_consumer_contracts_satisfied"] is True
     assert manifest["catalog_path"] == "signal_source_families.json"
-    assert manifest["source_profile_count"] == 9
+    assert manifest["source_profile_count"] == 10
 
     validation_summary = validate_signal_source_family_catalog_manifest(
         manifest_path,
@@ -1482,6 +1633,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
         "research:nasdaq_sp500_price_proxy",
         "us_equity:ibit_smart_dca",
         "us_equity:nasdaq_sp500_smart_dca",
+        "us_equity:soxl_soxx_trend_income",
     )
     assert payload == {
         "schema_version": "market_signal_consumer_contracts.v1",
@@ -1630,7 +1782,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 9
+    assert validation_summary["consumer_count"] == 10
     assert validation_summary["local_contract_registry_verified"] is True
 
     cli_output_dir = tmp_path / "cli-contracts"
@@ -1684,7 +1836,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 9
+    assert summary["consumer_count"] == 10
     assert summary["local_contract_registry_verified"] is True
     assert summary["canonical_registry_payload_sha256"] == summary[
         "local_registry_payload_sha256"
@@ -1759,11 +1911,12 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "us_equity.nasdaq_sp500_context_daily",
         "us_equity.nasdaq_sp500_price_proxy_daily",
         "us_equity.nasdaq_sp500_public_context_daily",
+        "us_equity.semiconductor_rotation_daily",
         "us_equity.technical_daily",
     ]
     assert summary["matched_source_families"] == ("crypto.btc_cycle_daily",)
     assert summary["matched_source_family_count"] == 1
-    assert summary["consumer_contract_count"] == 9
+    assert summary["consumer_contract_count"] == 10
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
     assert summary["local_contract_registry_verified"] is True
@@ -2234,6 +2387,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert config_set_summary["all_known_runtime_consumers_present"] is False
     assert config_set_summary["missing_known_runtime_consumers"] == (
         "us_equity:nasdaq_sp500_smart_dca",
+        "us_equity:soxl_soxx_trend_income",
     )
     with pytest.raises(ValueError, match="missing known runtime consumers"):
         validate_runtime_adapter_config_set_files(

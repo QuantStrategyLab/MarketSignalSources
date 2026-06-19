@@ -17,8 +17,17 @@ from .nasdaq_sp500_context import (
     write_nasdaq_sp500_public_context_availability_report,
     write_nasdaq_sp500_context_availability_report,
 )
+from .semiconductor_rotation import (
+    DEFAULT_SEMICONDUCTOR_ROTATION_HISTORY_LOOKBACK,
+    SEMICONDUCTOR_ROTATION_DERIVED_INDICATOR_FIELDS,
+    SEMICONDUCTOR_ROTATION_SOXL_FIELDS,
+    SEMICONDUCTOR_ROTATION_SOXX_FIELDS,
+    compute_semiconductor_rotation_indicators,
+    required_semiconductor_rotation_history_lookback,
+)
 
 __all__ = [
+    "DEFAULT_SEMICONDUCTOR_ROTATION_HISTORY_LOOKBACK",
     "NASDAQ_SP500_CONTEXT_AVAILABILITY_SCHEMA_VERSION",
     "NASDAQ_SP500_CONTEXT_ARTIFACT_TYPE",
     "NASDAQ_SP500_CONTEXT_TRANSFORM",
@@ -27,11 +36,16 @@ __all__ = [
     "NASDAQ_SP500_PRICE_PROXY_TRANSFORM",
     "NASDAQ_SP500_PUBLIC_CONTEXT_AVAILABILITY_SCHEMA_VERSION",
     "NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS",
+    "SEMICONDUCTOR_ROTATION_DERIVED_INDICATOR_FIELDS",
+    "SEMICONDUCTOR_ROTATION_SOXL_FIELDS",
+    "SEMICONDUCTOR_ROTATION_SOXX_FIELDS",
     "build_nasdaq_sp500_context_availability_report",
     "build_nasdaq_sp500_context_frame",
     "build_nasdaq_sp500_price_proxy_frame",
     "build_nasdaq_sp500_public_context_availability_report",
     "build_nasdaq_sp500_public_context_frame",
+    "compute_semiconductor_rotation_indicators",
+    "required_semiconductor_rotation_history_lookback",
     "write_nasdaq_sp500_public_context_availability_report",
     "write_nasdaq_sp500_context_availability_report",
 ]
