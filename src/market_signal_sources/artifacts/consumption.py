@@ -78,6 +78,7 @@ _RUNTIME_AUDIT_IDENTITY_FIELDS = (
     "source_families",
     "matched_source_families",
     "consumer_contracts",
+    "all_runtime_consumers_covered",
 )
 
 
@@ -143,6 +144,7 @@ def audit_signal_consumption(
         return _runtime_consumption_audit(
             summary,
             handoff_source=selected_source,
+            lookup_as_of=as_of,
         )
 
     assert research_handoff_manifest is not None
@@ -370,8 +372,9 @@ def validate_runtime_adapter_deployment_config_file(
     )
     if _normalized_path(config_handoff_path) != _normalized_path(audit_handoff_path):
         raise ValueError("runtime adapter deployment handoff path mismatch")
-    if config_summary.get("as_of") and config_summary["as_of"] != audit_payload.get("as_of"):
-        raise ValueError("runtime adapter deployment as_of mismatch")
+    saved_lookup_as_of = str(audit_payload.get("lookup_as_of", "") or "").strip()
+    if saved_lookup_as_of and config_summary["as_of"] != saved_lookup_as_of:
+        raise ValueError("runtime adapter deployment lookup_as_of mismatch")
     if audit_payload.get("freshness_status") not in config_summary[
         "accepted_freshness_statuses"
     ]:
@@ -621,6 +624,7 @@ def validate_consumption_audit_file(
         "linked_manifest_sha256s_verified": payload[
             "linked_manifest_sha256s_verified"
         ],
+        "lookup_as_of": str(payload.get("lookup_as_of", "") or ""),
         "all_runtime_consumers_covered": bool(
             payload.get("all_runtime_consumers_covered", False)
         ),
@@ -633,6 +637,7 @@ def _runtime_consumption_audit(
     summary: dict[str, Any],
     *,
     handoff_source: str,
+    lookup_as_of: str | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": MARKET_SIGNAL_CONSUMPTION_AUDIT_SCHEMA_VERSION,
@@ -661,6 +666,7 @@ def _runtime_consumption_audit(
         ),
         "index_path": summary.get("index_path", ""),
         "index_handoff_count": summary.get("index_handoff_count", 0),
+        "lookup_as_of": str(lookup_as_of or ""),
         "signal_bundle_manifest_path": summary["signal_bundle_manifest_path"],
         "signal_bundle_manifest_sha256": summary["signal_bundle_manifest_sha256"],
         "source_family_catalog_manifest_path": summary[

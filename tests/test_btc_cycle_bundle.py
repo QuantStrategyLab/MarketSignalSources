@@ -1859,6 +1859,8 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert index_consumption_summary["handoff_source"] == "platform_handoff_index"
     assert index_consumption_summary["index_handoff_count"] == 1
+    assert index_consumption_summary["lookup_as_of"] == "2025-09-18"
+    assert index_consumption_summary["as_of"] == "2025-09-17"
     assert index_consumption_summary["handoff_manifest_sha256"] == _sha256(
         handoff_path
     )
@@ -1882,6 +1884,8 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_consumption_summary["consumption_mode"] == "runtime_platform"
     assert cli_consumption_summary["runtime_injection_allowed"] is True
     assert cli_consumption_summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert cli_consumption_summary["lookup_as_of"] == "2025-09-18"
+    assert cli_consumption_summary["as_of"] == "2025-09-17"
     assert cli_consumption_summary["all_runtime_consumers_covered"] is True
     cli_audit_artifact_path = tmp_path / "cli_consumption_audit.json"
     write_audit_result = audit_consumption_main(
@@ -1904,6 +1908,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     cli_audit_artifact_summary = json.loads(capsys.readouterr().out)
     assert cli_audit_artifact_summary["path"] == str(cli_audit_artifact_path)
     assert cli_audit_artifact_summary["consumption_mode"] == "runtime_platform"
+    assert cli_audit_artifact_summary["lookup_as_of"] == "2025-09-18"
     assert cli_audit_artifact_summary["all_runtime_consumers_covered"] is True
     validate_audit_result = audit_consumption_main(
         [
@@ -1917,6 +1922,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_audit_summary["sha256"] == cli_audit_artifact_summary[
         "sha256"
     ]
+    assert cli_validate_audit_summary["lookup_as_of"] == "2025-09-18"
     plan_result = audit_consumption_main(
         [
             "--platform-handoff-index",
@@ -2182,6 +2188,74 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert drifted_deployment_result == 2
     assert "current audit mismatch" in capsys.readouterr().err
+    coverage_drifted_audit = json.loads(
+        cli_audit_artifact_path.read_text(encoding="utf-8")
+    )
+    coverage_drifted_audit["all_runtime_consumers_covered"] = False
+    coverage_drifted_audit_artifact_path = (
+        tmp_path / "coverage_drifted_consumption_audit.json"
+    )
+    coverage_drifted_audit_artifact_path.write_text(
+        json.dumps(coverage_drifted_audit, sort_keys=True),
+        encoding="utf-8",
+    )
+    coverage_drifted_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "saved_consumption_audit_json": str(coverage_drifted_audit_artifact_path),
+    }
+    coverage_drifted_runtime_adapter_config_path = (
+        tmp_path / "coverage_drifted_runtime_adapter_config.json"
+    )
+    coverage_drifted_runtime_adapter_config_path.write_text(
+        json.dumps(coverage_drifted_runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="all_runtime_consumers_covered"):
+        validate_runtime_adapter_deployment_config_file(
+            coverage_drifted_runtime_adapter_config_path
+        )
+    coverage_drifted_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(coverage_drifted_runtime_adapter_config_path),
+        ]
+    )
+    assert coverage_drifted_deployment_result == 2
+    assert "all_runtime_consumers_covered" in capsys.readouterr().err
+    lookup_drifted_audit = json.loads(
+        cli_audit_artifact_path.read_text(encoding="utf-8")
+    )
+    lookup_drifted_audit["lookup_as_of"] = "2025-09-19"
+    lookup_drifted_audit_artifact_path = (
+        tmp_path / "lookup_drifted_consumption_audit.json"
+    )
+    lookup_drifted_audit_artifact_path.write_text(
+        json.dumps(lookup_drifted_audit, sort_keys=True),
+        encoding="utf-8",
+    )
+    lookup_drifted_runtime_adapter_config = {
+        **runtime_adapter_config,
+        "saved_consumption_audit_json": str(lookup_drifted_audit_artifact_path),
+    }
+    lookup_drifted_runtime_adapter_config_path = (
+        tmp_path / "lookup_drifted_runtime_adapter_config.json"
+    )
+    lookup_drifted_runtime_adapter_config_path.write_text(
+        json.dumps(lookup_drifted_runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="lookup_as_of mismatch"):
+        validate_runtime_adapter_deployment_config_file(
+            lookup_drifted_runtime_adapter_config_path
+        )
+    lookup_drifted_deployment_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-deployment-json",
+            str(lookup_drifted_runtime_adapter_config_path),
+        ]
+    )
+    assert lookup_drifted_deployment_result == 2
+    assert "lookup_as_of mismatch" in capsys.readouterr().err
     bad_handoff_runtime_adapter_config = {
         **runtime_adapter_config,
         "signal_handoff_index": str(tmp_path / "other_platform_handoff_index.json"),

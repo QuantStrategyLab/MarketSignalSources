@@ -167,10 +167,14 @@ audit is not enough to enable a strategy, because it proves shape but not
 deployment identity.
 
 For runtime handoffs, the audit summary must show
-`ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
-expected `runtime_market_data_key`, such as `derived_indicators`.
+`ready_for_runtime_injection=true`, `runtime_injection_allowed=true`,
+`all_runtime_consumers_covered=true`, and the expected
+`runtime_market_data_key`, such as `derived_indicators`.
 It also includes `matched_source_families`, which records the exact source
 family or families that matched the runtime bundle and consumer.
+For index lookups, `lookup_as_of` records the requested selection date while
+`as_of` remains the selected handoff or bundle date; these can differ when the
+latest valid handoff is earlier than the strategy evaluation date.
 When a platform only needs the injection mapping after validation, it can ask
 the same command for the minimal runtime plan:
 
@@ -181,6 +185,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --runtime-injection-plan \
   --pretty
 ```
@@ -250,9 +255,10 @@ consumer. The deployment validation also reads
 `saved_consumption_audit_json` and, when present, `saved_runtime_plan_json`; it
 re-resolves the current handoff lookup and confirms the config consumer,
 handoff source, handoff path, selected audit identity, `as_of`, accepted
-freshness, saved audit identity, and runtime plan match before startup
-injection. The deployment-set validation applies that full deployment check to
-each config and enforces set-level runtime consumer coverage.
+freshness, saved audit identity, `all_runtime_consumers_covered`, and runtime
+plan match before startup injection. The deployment-set validation applies that
+full deployment check to each config and enforces set-level runtime consumer
+coverage.
 
 Required adapter config semantics:
 
@@ -260,7 +266,7 @@ Required adapter config semantics:
 | --- | --- |
 | `signal_consumer` | Must be the exact runtime consumer id expected by the strategy profile, for example `us_equity:ibit_smart_dca`; `research:` consumers are invalid for runtime injection. |
 | `signal_handoff_index` / `signal_handoff_manifest` | Provide exactly one lookup source. Use an index when selecting by `as_of`; use a manifest only for a pinned deployment. |
-| `signal_as_of` | Required with `signal_handoff_index`; it selects the latest matching handoff at or before the strategy evaluation date. |
+| `signal_as_of` | Required with `signal_handoff_index`; it selects the latest matching handoff at or before the strategy evaluation date and is recorded as `lookup_as_of` in new consumption audits. |
 | `accepted_freshness_statuses` | Keep fail-closed by default. For production DCA profiles this should usually be `["fresh"]`; broader statuses require a strategy owner decision. |
 | `saved_consumption_audit_json` | Required after deploy approval. Startup should revalidate this file before the strategy is enabled. |
 | `saved_runtime_plan_json` | Optional only if the platform derives the runtime plan in memory. If saved, it must match `saved_consumption_audit_json` before injection. |
