@@ -274,13 +274,20 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
         consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
     )
     assert manifest_summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
+    assert "research:ibit_btc_ahr999_mayer_precomputed_variants" in manifest_summary[
+        "compatible_profiles"
+    ]
     assert manifest_summary["quality_status"] == "pass"
     assert manifest_summary["quality_normalized_row_count"] == 260
     assert manifest_summary["quality_report_sha256"] == _sha256(quality_report_path)
     assert index_summary["index_schema_version"] == "market_signal_index.v1"
     assert index_summary["indicator_field_count_by_symbol"]["BTC-USD"] == 13
+    assert "us_equity:ibit_smart_dca" in index_summary["compatible_profiles"]
     assert "ahr999" in index_summary["indicator_fields_by_symbol"]["BTC-USD"]
     assert consumer_summary["consumer"] == "research:ibit_btc_ahr999_mayer_precomputed_variants"
+    assert "research:ibit_btc_ahr999_mayer_precomputed_variants" in consumer_summary[
+        "compatible_profiles"
+    ]
     assert consumer_summary["required_indicator_fields_by_symbol"] == {
         "BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")
     }

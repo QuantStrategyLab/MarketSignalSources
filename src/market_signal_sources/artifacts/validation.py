@@ -416,6 +416,7 @@ def signal_bundle_audit_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
         "schema_version": str(bundle.get("schema_version", "")),
         "bundle_type": str(bundle.get("bundle_type", "")),
         "canonical_input": _canonical_input(bundle),
+        "compatible_profiles": _compatible_profiles(bundle),
         "as_of": str(bundle.get("as_of", "")),
         "generated_at": str(bundle.get("generated_at", "")),
         "symbols": tuple(str(symbol) for symbol in bundle.get("symbols", ()) or ()),

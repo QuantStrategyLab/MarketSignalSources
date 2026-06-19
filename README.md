@@ -82,6 +82,8 @@ downstream field coverage before publishing. For
 `research:ibit_btc_ahr999_mayer_precomputed_variants`, the bundle's
 `consumer_contract.compatible_profiles` must include that consumer and the
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
+Plain manifest/index audit summaries also include `compatible_profiles`, so CI
+logs can show the allowed consumer set without printing signal values.
 
 Consumer field requirements are also exposed as a JSON registry so platform and
 strategy repositories can run drift checks without importing this package at
