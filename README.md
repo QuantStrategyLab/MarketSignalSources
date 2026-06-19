@@ -190,6 +190,33 @@ python -m market_signal_sources.cli.list_signal_source_families \
   --pretty
 ```
 
+After publishing the signal bundle, source catalog, and consumer contracts, build
+a single platform handoff manifest that pins all three manifest hashes:
+
+```bash
+python -m market_signal_sources.cli.build_platform_handoff \
+  --signal-bundle-manifest ./data/output/signal_bundles/crypto/btc/derived_indicators/2026-06-19/manifest.json \
+  --source-family-catalog-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
+  --consumer-contract-registry-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
+  --output-manifest ./data/output/platform_handoff.json \
+  --consumer us_equity:ibit_smart_dca \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+```
+
+Platform CI can then validate one handoff manifest before loading the linked
+bundle:
+
+```bash
+python -m market_signal_sources.cli.build_platform_handoff \
+  --validate-manifest ./data/output/platform_handoff.json \
+  --consumer us_equity:ibit_smart_dca \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --pretty
+```
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash

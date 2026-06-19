@@ -33,6 +33,9 @@ The platform-facing outputs are:
   transform, freshness policy, produced fields, and compatible consumers.
 - `market_signal_source_family_catalog_manifest.v1`: manifest for the source
   family catalog itself.
+- `market_signal_platform_handoff.v1`: platform-facing manifest that pins the
+  signal bundle manifest, source family catalog manifest, and consumer contract
+  registry manifest as one release unit.
 
 ## Design Pressure
 
@@ -98,14 +101,16 @@ credential paths, or service lifecycle ownership.
    rejects profile drift across index, manifest, and bundle.
 7. Publish the source family catalog and the consumer contract registry with
    their manifests.
-8. Strategy CI validates the signal manifest, source family catalog manifest,
-   and consumer contract registry manifest before allowing a strategy config to
-   reference the artifact. Strategy repositories should also compare the source
-   catalog's transform and `compatible_profiles`, plus the registry's consumer
-   entries, with their own expected consumer identifiers and required fields, so
-   a hash-valid catalog or registry that omits the target strategy still fails
-   before release.
-9. Runtime loads the validated bundle and injects only `derived_indicators`.
+8. Write `market_signal_platform_handoff.v1` to pin the signal bundle manifest,
+   source family catalog manifest, and consumer contract registry manifest as a
+   single platform handoff unit.
+9. Strategy CI validates the handoff manifest before allowing a strategy config
+   to reference the artifact. Strategy repositories should also compare the
+   source catalog's transform and `compatible_profiles`, plus the registry's
+   consumer entries, with their own expected consumer identifiers and required
+   fields, so a hash-valid catalog or registry that omits the target strategy
+   still fails before release.
+10. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

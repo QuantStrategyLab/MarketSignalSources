@@ -124,6 +124,7 @@ def write_consumer_contract_registry(
         "schema_version": payload["schema_version"],
         "canonical_input": payload["canonical_input"],
         "consumer_count": len(contracts),
+        "consumers": contract_consumers,
         "known_consumer_count": len(CONSUMER_REQUIRED_INDICATOR_FIELDS),
         "missing_known_consumers": missing_known_consumers,
         "all_known_consumers_present": not missing_known_consumers,
@@ -311,6 +312,7 @@ def _consumer_contract_registry_manifest(
         "registry_schema_version": registry_summary["schema_version"],
         "canonical_input": registry_summary["canonical_input"],
         "consumer_count": registry_summary["consumer_count"],
+        "consumers": list(registry_summary.get("consumers", ())),
         "known_consumer_count": registry_summary["known_consumer_count"],
         "missing_known_consumers": registry_summary["missing_known_consumers"],
         "all_known_consumers_present": registry_summary["all_known_consumers_present"],
@@ -336,6 +338,7 @@ def _consumer_contract_manifest_summary(
         "registry_schema_version": registry_summary["schema_version"],
         "canonical_input": registry_summary["canonical_input"],
         "consumer_count": registry_summary["consumer_count"],
+        "consumers": list(registry_summary.get("consumers", ())),
         "known_consumer_count": registry_summary["known_consumer_count"],
         "missing_known_consumers": registry_summary["missing_known_consumers"],
         "all_known_consumers_present": registry_summary["all_known_consumers_present"],
@@ -389,6 +392,10 @@ def _validate_consumer_contract_registry_manifest_shape(
         raise SignalConsumerContractError(
             "consumer contract manifest missing_known_consumers must be a list"
         )
+    if "consumers" in manifest and not isinstance(manifest["consumers"], list):
+        raise SignalConsumerContractError(
+            "consumer contract manifest consumers must be a list"
+        )
     if not isinstance(manifest["all_known_consumers_present"], bool):
         raise SignalConsumerContractError(
             "consumer contract manifest all_known_consumers_present must be a bool"
@@ -429,6 +436,8 @@ def _validate_consumer_contract_registry_manifest_consistency(
         "missing_known_consumers": registry_summary["missing_known_consumers"],
         "all_known_consumers_present": registry_summary["all_known_consumers_present"],
     }
+    if "consumers" in manifest:
+        expected_values["consumers"] = list(registry_summary.get("consumers", ()))
     for field, expected in expected_values.items():
         if manifest[field] != expected:
             raise SignalConsumerContractError(

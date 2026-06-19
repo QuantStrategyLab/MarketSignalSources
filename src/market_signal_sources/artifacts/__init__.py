@@ -34,6 +34,11 @@ from .quality_report import (
     validate_ohlcv_quality_report_file,
     write_ohlcv_quality_report,
 )
+from .platform_handoff import (
+    MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION,
+    validate_platform_signal_handoff_manifest,
+    write_platform_signal_handoff_manifest,
+)
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
 from .source_catalog import (
     SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
@@ -73,6 +78,7 @@ __all__ = [
     "MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION",
     "MARKET_SIGNAL_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
+    "MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
@@ -112,12 +118,14 @@ __all__ = [
     "validate_signal_bundle_manifest_for_consumer",
     "validate_ohlcv_quality_report",
     "validate_ohlcv_quality_report_file",
+    "validate_platform_signal_handoff_manifest",
     "write_research_export_manifest",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
     "write_signal_source_family_catalog",
     "write_signal_source_family_catalog_artifacts",
     "write_ohlcv_quality_report",
+    "write_platform_signal_handoff_manifest",
     "write_signal_bundle_artifacts",
     "write_signal_bundle_publication_index",
     "upsert_signal_bundle_publication_index",

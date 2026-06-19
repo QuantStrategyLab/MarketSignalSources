@@ -43,6 +43,10 @@ from market_signal_sources.artifacts.consumer_contracts import (
     write_consumer_contract_registry,
     write_consumer_contract_registry_artifacts,
 )
+from market_signal_sources.artifacts.platform_handoff import (
+    validate_platform_signal_handoff_manifest,
+    write_platform_signal_handoff_manifest,
+)
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
     required_indicator_fields_for_consumer,
@@ -56,6 +60,7 @@ from market_signal_sources.artifacts.validation import (
     validate_signal_bundle_manifest,
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
+from market_signal_sources.cli.build_platform_handoff import main as handoff_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
 from market_signal_sources.cli.list_signal_source_families import (
@@ -1143,6 +1148,121 @@ def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
 
     with pytest.raises(SignalConsumerContractError, match="drift"):
         validate_consumer_contract_registry_file(output_json)
+
+
+def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
+    tmp_path,
+    capsys,
+) -> None:
+    input_csv = tmp_path / "btc.csv"
+    quality_report_path = tmp_path / "bundle" / "quality_report.json"
+    _btc_frame().to_csv(input_csv, index=False)
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    bundle_paths = write_signal_bundle_artifacts(
+        tmp_path / "bundle",
+        bundle,
+        quality_report_path=quality_report_path,
+    )
+    catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "source-catalog"
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "contracts"
+    )
+    handoff_path = tmp_path / "platform_handoff.json"
+
+    summary = write_platform_signal_handoff_manifest(
+        handoff_path,
+        signal_bundle_manifest=bundle_paths["manifest"],
+        source_family_catalog_manifest=catalog_summary["manifest_path"],
+        consumer_contract_registry_manifest=contract_summary["manifest_path"],
+        consumer="us_equity:ibit_smart_dca",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+    )
+
+    assert summary["schema_version"] == "market_signal_platform_handoff.v1"
+    assert summary["artifact_type"] == "market_signal_platform_handoff"
+    assert summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert summary["canonical_input"] == "derived_indicators"
+    assert summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
+    assert summary["source_families"] == ["crypto.btc_cycle_daily"]
+    assert summary["consumer_contract_count"] == 4
+    assert summary["all_known_source_families_present"] is True
+    assert summary["all_known_consumers_present"] is True
+    assert summary["signal_bundle_manifest_sha256"] == _sha256(
+        bundle_paths["manifest"]
+    )
+
+    validation_summary = validate_platform_signal_handoff_manifest(
+        handoff_path,
+        consumer="us_equity:ibit_smart_dca",
+        require_all_known_families=True,
+        require_all_known_consumers=True,
+    )
+    assert validation_summary["sha256"] == _sha256(handoff_path)
+
+    cli_handoff_path = tmp_path / "cli_platform_handoff.json"
+    result = handoff_main(
+        [
+            "--signal-bundle-manifest",
+            str(bundle_paths["manifest"]),
+            "--source-family-catalog-manifest",
+            str(catalog_summary["manifest_path"]),
+            "--consumer-contract-registry-manifest",
+            str(contract_summary["manifest_path"]),
+            "--output-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--pretty",
+        ]
+    )
+    assert result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    assert cli_summary["path"] == str(cli_handoff_path)
+    assert cli_summary["sha256"] == _sha256(cli_handoff_path)
+
+    validate_result = handoff_main(
+        [
+            "--validate-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_validate_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_summary["sha256"] == _sha256(cli_handoff_path)
+
+    catalog_manifest_path = Path(catalog_summary["manifest_path"])
+    catalog_manifest = json.loads(catalog_manifest_path.read_text(encoding="utf-8"))
+    catalog_manifest_path.write_text(
+        json.dumps(catalog_manifest, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="source_family_catalog_manifest_sha256"):
+        validate_platform_signal_handoff_manifest(
+            handoff_path,
+            consumer="us_equity:ibit_smart_dca",
+            require_all_known_families=True,
+            require_all_known_consumers=True,
+        )
 
 
 def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
