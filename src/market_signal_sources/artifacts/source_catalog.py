@@ -142,6 +142,50 @@ US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_SOURCE_PROFILES: tuple[
 US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "research:nasdaq_sp500_cape_vix_external_context_precomputed",
 )
+US_EQUITY_PRICE_PROXY_SYMBOL = "US-EQUITY-PRICE-PROXY"
+US_EQUITY_NASDAQ_SP500_PRICE_PROXY_FIELDS: tuple[str, ...] = (
+    "QQQ",
+    "SPY",
+    "provider_timestamp",
+)
+US_EQUITY_NASDAQ_SP500_PRICE_PROXY_SOURCE_PROFILES: tuple[
+    dict[str, object],
+    ...,
+] = (
+    {
+        "source_id": "fred.nasdaq100",
+        "source_name": "Federal Reserve Economic Data NASDAQ100",
+        "provider_dataset": "NASDAQ100",
+        "produced_fields": ("QQQ",),
+        "history_frequency": "daily",
+        "point_in_time_status": "public_history_with_execution_lag",
+        "max_allowed_lag_days": 10,
+        "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
+        "research_use_policy": (
+            "accepted as a Nasdaq price proxy only when the downloaded CSV, "
+            "as_of, and transform version are hash-pinned"
+        ),
+        "source_url": "https://fred.stlouisfed.org/series/NASDAQ100",
+    },
+    {
+        "source_id": "fred.sp500",
+        "source_name": "Federal Reserve Economic Data SP500",
+        "provider_dataset": "SP500",
+        "produced_fields": ("SPY",),
+        "history_frequency": "daily",
+        "point_in_time_status": "public_history_with_execution_lag",
+        "max_allowed_lag_days": 10,
+        "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
+        "research_use_policy": (
+            "accepted as an S&P 500 price proxy only when the downloaded CSV, "
+            "as_of, and transform version are hash-pinned"
+        ),
+        "source_url": "https://fred.stlouisfed.org/series/SP500",
+    },
+)
+US_EQUITY_NASDAQ_SP500_PRICE_PROXY_COMPATIBLE_PROFILES: tuple[str, ...] = (
+    "research:nasdaq_sp500_price_proxy",
+)
 
 SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "crypto": {
@@ -165,6 +209,7 @@ SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "us_equity": {
         "implemented_families": (
             "us_equity.nasdaq_sp500_context_daily",
+            "us_equity.nasdaq_sp500_price_proxy_daily",
             "us_equity.nasdaq_sp500_public_context_daily",
         ),
         "planned_families": (
@@ -248,6 +293,23 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "compatible_profiles": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES,
         "runtime_consumers": (),
         "research_consumers": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES,
+    },
+    "us_equity.nasdaq_sp500_price_proxy_daily": {
+        "family": "us_equity.nasdaq_sp500_price_proxy_daily",
+        "domain": "us_equity",
+        "bundle_type": "research_export",
+        "bundle_id_prefix": "us_equity.nasdaq_sp500.price_proxy",
+        "canonical_input": "derived_indicators",
+        "transform": "us_equity.nasdaq_sp500.price_proxy.v1",
+        "provider_dataset": "fred_nasdaq100_sp500_daily",
+        "freshness_policy": "us_equity_price_proxy_t_plus_1",
+        "minimum_history_rows": 1,
+        "symbols": (US_EQUITY_PRICE_PROXY_SYMBOL,),
+        "derived_indicator_fields": US_EQUITY_NASDAQ_SP500_PRICE_PROXY_FIELDS,
+        "source_profiles": US_EQUITY_NASDAQ_SP500_PRICE_PROXY_SOURCE_PROFILES,
+        "compatible_profiles": US_EQUITY_NASDAQ_SP500_PRICE_PROXY_COMPATIBLE_PROFILES,
+        "runtime_consumers": (),
+        "research_consumers": US_EQUITY_NASDAQ_SP500_PRICE_PROXY_COMPATIBLE_PROFILES,
     },
 }
 

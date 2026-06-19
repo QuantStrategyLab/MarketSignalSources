@@ -186,15 +186,19 @@ The currently implemented US equity research families are
 fields for `cape_percentile`, `vix_percentile`, and
 `breadth_above_sma200_pct`, and
 `us_equity.nasdaq_sp500_public_context_daily`, which publishes only
-`cape_percentile` and `vix_percentile` for public-data-only experiments. They
-are compatible with `research:nasdaq_sp500_external_context_precomputed` and
-`research:nasdaq_sp500_cape_vix_external_context_precomputed`, respectively;
-neither is a runtime strategy default. Their catalog records include source
-profiles for FRED `VIXCLS` and Shiller CAPE snapshots; the full context family
-also requires point-in-time index breadth history. The breadth profile explicitly
-rejects current-constituent backfills because they create survivorship bias.
-FRED VIX and Shiller CAPE profiles also expose `max_allowed_lag_days`, matching
-the public context quality-report freshness gates.
+`cape_percentile` and `vix_percentile` for public-data-only experiments. A
+third research-only family, `us_equity.nasdaq_sp500_price_proxy_daily`, publishes
+`US-EQUITY-PRICE-PROXY` fields `QQQ` and `SPY` from local FRED `NASDAQ100` and
+`SP500` snapshots for price-only smart-DCA reproductions. These families are
+compatible with `research:nasdaq_sp500_external_context_precomputed`,
+`research:nasdaq_sp500_cape_vix_external_context_precomputed`, and
+`research:nasdaq_sp500_price_proxy`, respectively; none is a runtime strategy
+default. Their catalog records include source profiles for FRED `VIXCLS`,
+Shiller CAPE snapshots, FRED `NASDAQ100`, and FRED `SP500`; the full context
+family also requires point-in-time index breadth history. The breadth profile
+explicitly rejects current-constituent backfills because they create survivorship
+bias. FRED profiles and Shiller CAPE profiles expose `max_allowed_lag_days`,
+matching the related quality-report or research freshness assumptions.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
@@ -398,6 +402,28 @@ public context. By default FRED VIX must be no more than 10 days stale versus
 `as_of`, and Shiller CAPE must be no more than 120 days stale; stale inputs fail
 the quality report instead of silently extending old low-frequency values into a
 current research run.
+
+For a price-only Nasdaq/S&P research input, export local FRED `NASDAQ100` and
+`SP500` snapshots into the QQQ/SPY column names expected by strategy research
+tools:
+
+```bash
+python -m market_signal_sources.cli.export_us_equity_price_proxy_research_csv \
+  --fred-nasdaq100-csv ./NASDAQ100.csv \
+  --fred-sp500-csv ./SP500.csv \
+  --output-csv ./data/output/research/us_equity_price_proxy.csv \
+  --manifest-path ./data/output/research/us_equity_price_proxy.manifest.json \
+  --as-of 2026-06-19 \
+  --pretty
+```
+
+This export writes `artifact_type=us_equity_price_proxy_research_csv` and
+`transform=us_equity.nasdaq_sp500.price_proxy.v1`. It performs an exact-date
+inner join between the two index series and does not forward-fill missing price
+observations. The `QQQ` and `SPY` column names are compatibility labels for
+strategy research inputs; the manifest and input source records preserve the
+fact that the raw data came from index-level FRED snapshots rather than ETF
+fills.
 
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match

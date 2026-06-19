@@ -147,6 +147,10 @@ research inputs, not runtime platform injection contracts. The US equity context
 export can also write `us_equity_context_availability_report.v1`, which gates
 missing fields, date validity, percentile ranges, duplicate dates, and date gaps
 before strategy research ranks any candidate.
+Price-only Nasdaq/S&P reproductions use a separate
+`artifact_type=us_equity_price_proxy_research_csv` with
+`transform=us_equity.nasdaq_sp500.price_proxy.v1`, so proxy price fixtures do
+not masquerade as valuation, volatility, or breadth context.
 
 ## Multi-Market Extension
 
@@ -202,7 +206,15 @@ consumer is `research:nasdaq_sp500_cape_vix_external_context_precomputed`.
 That consumer intentionally does not satisfy the full-context consumer because
 it lacks `breadth_above_sma200_pct`.
 
-That family also carries source-profile metadata:
+A third US equity research family,
+`us_equity.nasdaq_sp500_price_proxy_daily`, publishes the stable symbol
+`US-EQUITY-PRICE-PROXY` with `QQQ` and `SPY` fields from local FRED `NASDAQ100`
+and `SP500` snapshots. It is only for price-only smart-DCA reproduction paths
+that need the same column names as strategy research code. The family has no
+runtime consumers, and its manifest transform is distinct from the context
+transform so downstream tools can reject accidental cross-use.
+
+The Nasdaq/S&P context families also carry source-profile metadata:
 
 - `fred.vixcls` produces `vix_percentile` from FRED `VIXCLS`; research should pin
   the downloaded CSV, `as_of`, and percentile lookback, and should use at least a
@@ -214,6 +226,12 @@ That family also carries source-profile metadata:
   Current-constituent backfills are not accepted because they introduce
   survivorship bias; use point-in-time constituents or an auditable historical
   breadth index.
+
+The price proxy family has its own source profiles: `fred.nasdaq100` produces
+the `QQQ` compatibility column from FRED `NASDAQ100`, and `fred.sp500` produces
+the `SPY` compatibility column from FRED `SP500`. Both are marked as public
+history with an execution lag assumption and require downloaded CSV snapshots to
+be hash-pinned for research.
 
 The public-context exporter reads only local FRED and Shiller CSV snapshots. It
 does not fetch network data or parse broker/platform state. It computes

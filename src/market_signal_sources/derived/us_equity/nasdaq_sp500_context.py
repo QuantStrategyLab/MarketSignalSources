@@ -18,6 +18,8 @@ NASDAQ_SP500_PUBLIC_CONTEXT_AVAILABILITY_SCHEMA_VERSION = (
 )
 NASDAQ_SP500_CONTEXT_ARTIFACT_TYPE = "us_equity_context_research_csv"
 NASDAQ_SP500_CONTEXT_TRANSFORM = "us_equity.nasdaq_sp500.context.v1"
+NASDAQ_SP500_PRICE_PROXY_ARTIFACT_TYPE = "us_equity_price_proxy_research_csv"
+NASDAQ_SP500_PRICE_PROXY_TRANSFORM = "us_equity.nasdaq_sp500.price_proxy.v1"
 NASDAQ_SP500_CONTEXT_FIELDS: tuple[str, ...] = (
     "cape_percentile",
     "vix_percentile",
@@ -27,6 +29,7 @@ NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS: tuple[str, ...] = (
     "cape_percentile",
     "vix_percentile",
 )
+NASDAQ_SP500_PRICE_PROXY_FIELDS: tuple[str, ...] = ("QQQ", "SPY")
 
 
 def build_nasdaq_sp500_context_frame(
@@ -169,6 +172,65 @@ def build_nasdaq_sp500_public_context_frame(
             "insufficient public US equity context history after validation: "
             f"{len(output)} rows < {int(min_history)}"
         )
+    if provider_timestamp:
+        timestamp = pd.Timestamp(provider_timestamp).strftime("%Y-%m-%dT%H:%M:%SZ")
+        output["provider_timestamp"] = timestamp
+    else:
+        output["provider_timestamp"] = output["date"].dt.strftime("%Y-%m-%dT00:00:00Z")
+    output["date"] = output["date"].dt.date.astype(str)
+    return output.reset_index(drop=True)
+
+
+def build_nasdaq_sp500_price_proxy_frame(
+    *,
+    fred_nasdaq100_frame: pd.DataFrame,
+    fred_sp500_frame: pd.DataFrame,
+    as_of: str | None = None,
+    nasdaq100_date_column: str = "DATE",
+    nasdaq100_value_column: str = "NASDAQ100",
+    sp500_date_column: str = "DATE",
+    sp500_value_column: str = "SP500",
+    provider_timestamp: str | None = None,
+    min_history: int = 1,
+) -> pd.DataFrame:
+    """Build a daily QQQ/SPY-compatible price proxy from local index snapshots."""
+
+    nasdaq100 = _source_metric_frame(
+        fred_nasdaq100_frame,
+        date_column=nasdaq100_date_column,
+        value_column=nasdaq100_value_column,
+        output_column="QQQ",
+        source_name="FRED NASDAQ100",
+    )
+    sp500 = _source_metric_frame(
+        fred_sp500_frame,
+        date_column=sp500_date_column,
+        value_column=sp500_value_column,
+        output_column="SPY",
+        source_name="FRED SP500",
+    )
+    if as_of:
+        cutoff = pd.Timestamp(as_of).normalize()
+        nasdaq100 = nasdaq100.loc[nasdaq100["date"] <= cutoff]
+        sp500 = sp500.loc[sp500["date"] <= cutoff]
+    if nasdaq100.empty:
+        raise ValueError("insufficient FRED NASDAQ100 history: 0 rows")
+    if sp500.empty:
+        raise ValueError("insufficient FRED SP500 history: 0 rows")
+
+    merged = pd.merge(
+        nasdaq100.loc[:, ["date", "QQQ"]],
+        sp500.loc[:, ["date", "SPY"]],
+        on="date",
+        how="inner",
+    ).sort_values("date")
+    if len(merged) < int(min_history):
+        raise ValueError(
+            "insufficient Nasdaq/S&P price proxy history: "
+            f"{len(merged)} rows < {int(min_history)}"
+        )
+
+    output = merged.loc[:, ["date", *NASDAQ_SP500_PRICE_PROXY_FIELDS]].copy()
     if provider_timestamp:
         timestamp = pd.Timestamp(provider_timestamp).strftime("%Y-%m-%dT%H:%M:%SZ")
         output["provider_timestamp"] = timestamp
