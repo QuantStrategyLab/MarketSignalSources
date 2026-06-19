@@ -56,7 +56,9 @@ from .artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
+    validate_runtime_signal_injection_plan_file,
     write_consumption_audit_artifact,
+    write_runtime_signal_injection_plan_artifact,
 )
 from .artifacts.source_catalog import (
     SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
@@ -154,6 +156,7 @@ __all__ = [
     "validate_platform_signal_handoff_index",
     "validate_platform_signal_handoff_manifest",
     "validate_consumption_audit_file",
+    "validate_runtime_signal_injection_plan_file",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
     "write_signal_source_family_catalog",
@@ -164,6 +167,7 @@ __all__ = [
     "write_research_export_manifest",
     "write_research_signal_handoff_manifest",
     "write_consumption_audit_artifact",
+    "write_runtime_signal_injection_plan_artifact",
     "write_signal_bundle_artifacts",
     "write_signal_bundle_publication_index",
     "upsert_signal_bundle_publication_index",

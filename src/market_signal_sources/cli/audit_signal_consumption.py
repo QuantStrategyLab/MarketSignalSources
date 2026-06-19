@@ -9,7 +9,9 @@ from market_signal_sources.artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
+    validate_runtime_signal_injection_plan_file,
     write_consumption_audit_artifact,
+    write_runtime_signal_injection_plan_artifact,
 )
 
 
@@ -18,7 +20,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.validate_json is not None:
+        if args.validate_json is not None or args.validate_runtime_plan_json is not None:
+            if args.validate_json is not None and args.validate_runtime_plan_json is not None:
+                raise ValueError(
+                    "provide either --validate-json or --validate-runtime-plan-json, not both"
+                )
             if (
                 args.consumer
                 or args.platform_handoff_manifest
@@ -26,19 +32,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                 or args.research_handoff_manifest
                 or args.as_of
                 or args.output_json
+                or args.output_runtime_plan_json
                 or args.runtime_injection_plan
                 or args.require_all_known_families
                 or args.require_all_known_consumers
             ):
                 raise ValueError(
-                    "provide --validate-json without consumer, handoff, output, "
+                    "provide validation without consumer, handoff, output, "
                     "runtime-plan, or require-all options"
                 )
-            payload = validate_consumption_audit_file(args.validate_json)
+            if args.validate_json is not None:
+                payload = validate_consumption_audit_file(args.validate_json)
+            else:
+                payload = validate_runtime_signal_injection_plan_file(
+                    args.validate_runtime_plan_json
+                )
         else:
             if args.output_json and args.runtime_injection_plan:
                 raise ValueError(
                     "provide --output-json only for full consumption audit summaries"
+                )
+            if args.output_json and args.output_runtime_plan_json:
+                raise ValueError(
+                    "provide either --output-json or --output-runtime-plan-json, not both"
+                )
+            if args.output_runtime_plan_json and args.runtime_injection_plan:
+                raise ValueError(
+                    "provide either --runtime-injection-plan or "
+                    "--output-runtime-plan-json, not both"
                 )
             payload = audit_signal_consumption(
                 consumer=args.consumer,
@@ -51,6 +72,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.output_json:
                 payload = write_consumption_audit_artifact(args.output_json, payload)
+            elif args.output_runtime_plan_json:
+                payload = write_runtime_signal_injection_plan_artifact(
+                    args.output_runtime_plan_json,
+                    runtime_signal_injection_plan(payload),
+                )
             elif args.runtime_injection_plan:
                 payload = runtime_signal_injection_plan(payload)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -79,6 +105,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-json",
         help="Validate a saved market_signal_consumption_audit.v1 JSON artifact.",
+    )
+    parser.add_argument(
+        "--output-runtime-plan-json",
+        help=(
+            "Write the minimal runtime injection plan as a validated JSON artifact. "
+            "Requires a runtime platform handoff."
+        ),
+    )
+    parser.add_argument(
+        "--validate-runtime-plan-json",
+        help="Validate a saved market_signal_runtime_injection_plan.v1 JSON artifact.",
     )
     parser.add_argument(
         "--as-of",

@@ -50,7 +50,9 @@ from market_signal_sources.artifacts.consumption import (
     audit_signal_consumption,
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
+    validate_runtime_signal_injection_plan_file,
     write_consumption_audit_artifact,
+    write_runtime_signal_injection_plan_artifact,
 )
 from market_signal_sources.artifacts.platform_handoff import (
     resolve_platform_signal_handoff_manifest_from_index,
@@ -1771,6 +1773,18 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert injection_plan["signal_bundle_manifest_sha256"] == _sha256(
         bundle_paths["manifest"]
     )
+    injection_plan_path = tmp_path / "runtime_injection_plan.json"
+    injection_plan_artifact_summary = write_runtime_signal_injection_plan_artifact(
+        injection_plan_path,
+        injection_plan,
+    )
+    assert injection_plan_artifact_summary["schema_version"] == (
+        "market_signal_runtime_injection_plan.v1"
+    )
+    assert injection_plan_artifact_summary["market_data_key"] == "derived_indicators"
+    assert validate_runtime_signal_injection_plan_file(injection_plan_path)[
+        "sha256"
+    ] == injection_plan_artifact_summary["sha256"]
 
     index_consumption_summary = audit_signal_consumption(
         platform_handoff_index=cli_index_path,
@@ -1859,6 +1873,39 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_injection_plan["consumer"] == "us_equity:ibit_smart_dca"
     assert cli_injection_plan["matched_source_families"] == [
         "crypto.btc_cycle_daily"
+    ]
+    cli_plan_artifact_path = tmp_path / "cli_runtime_injection_plan.json"
+    write_plan_result = audit_consumption_main(
+        [
+            "--platform-handoff-index",
+            str(cli_index_path),
+            "--consumer",
+            "us_equity:ibit_smart_dca",
+            "--as-of",
+            "2025-09-18",
+            "--require-all-known-families",
+            "--require-all-known-consumers",
+            "--output-runtime-plan-json",
+            str(cli_plan_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert write_plan_result == 0
+    cli_plan_artifact_summary = json.loads(capsys.readouterr().out)
+    assert cli_plan_artifact_summary[
+        "schema_version"
+    ] == "market_signal_runtime_injection_plan.v1"
+    validate_plan_result = audit_consumption_main(
+        [
+            "--validate-runtime-plan-json",
+            str(cli_plan_artifact_path),
+            "--pretty",
+        ]
+    )
+    assert validate_plan_result == 0
+    cli_validate_plan_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_plan_summary["sha256"] == cli_plan_artifact_summary[
+        "sha256"
     ]
 
     with pytest.raises(ValueError, match="consumer is required"):
@@ -2217,6 +2264,18 @@ def test_research_signal_handoff_manifest_pins_research_csv_contracts(
         ]
     )
     assert plan_result == 2
+    assert "not runtime-injectable" in capsys.readouterr().err
+    write_research_plan_result = audit_consumption_main(
+        [
+            "--research-handoff-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--output-runtime-plan-json",
+            str(tmp_path / "bad_research_runtime_plan.json"),
+        ]
+    )
+    assert write_research_plan_result == 2
     assert "not runtime-injectable" in capsys.readouterr().err
 
     wrong_consumer_result = research_handoff_main(

@@ -168,6 +168,51 @@ def runtime_signal_injection_plan(audit_summary: Mapping[str, Any]) -> dict[str,
     }
 
 
+def write_runtime_signal_injection_plan_artifact(
+    path: str | PathLike[str],
+    injection_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Write a validated runtime injection plan JSON artifact and return metadata."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _validate_runtime_injection_plan_payload(injection_plan)
+    output_path.write_text(
+        json.dumps(_json_safe_value(injection_plan), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return validate_runtime_signal_injection_plan_file(output_path)
+
+
+def validate_runtime_signal_injection_plan_file(
+    path: str | PathLike[str],
+) -> dict[str, Any]:
+    """Validate a saved market_signal_runtime_injection_plan.v1 JSON artifact."""
+
+    plan_path = Path(path)
+    with plan_path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    if not isinstance(payload, Mapping):
+        raise ValueError("runtime injection plan artifact must be a JSON object")
+    _validate_runtime_injection_plan_payload(payload)
+    return {
+        "path": str(plan_path),
+        "schema_version": payload["schema_version"],
+        "artifact_type": payload["artifact_type"],
+        "consumer": payload["consumer"],
+        "injection_allowed": payload["injection_allowed"],
+        "market_data_key": payload["market_data_key"],
+        "payload_field": payload["payload_field"],
+        "target_path": payload["target_path"],
+        "canonical_input": payload["canonical_input"],
+        "bundle_id": payload["bundle_id"],
+        "as_of": payload["as_of"],
+        "freshness_status": payload["freshness_status"],
+        "sha256": _sha256_file(plan_path),
+        "size_bytes": plan_path.stat().st_size,
+    }
+
+
 def write_consumption_audit_artifact(
     path: str | PathLike[str],
     audit_summary: Mapping[str, Any],
@@ -368,6 +413,42 @@ def _validate_consumption_audit_payload(payload: Mapping[str, Any]) -> None:
         raise ValueError("consumption audit consumer contract is not verified")
     if payload.get("source_catalog_verified") is not True:
         raise ValueError("consumption audit source catalog is not verified")
+
+
+def _validate_runtime_injection_plan_payload(payload: Mapping[str, Any]) -> None:
+    _reject_sensitive_keys(payload)
+    if (
+        payload.get("schema_version")
+        != MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION
+    ):
+        raise ValueError("runtime injection plan schema_version mismatch")
+    if payload.get("artifact_type") != _INJECTION_PLAN_ARTIFACT_TYPE:
+        raise ValueError("runtime injection plan artifact_type mismatch")
+    if payload.get("injection_allowed") is not True:
+        raise ValueError("runtime injection plan does not allow injection")
+    for field in (
+        "consumer",
+        "market_data_key",
+        "payload_field",
+        "target_path",
+        "canonical_input",
+        "bundle_id",
+        "as_of",
+        "freshness_status",
+        "signal_bundle_manifest_path",
+        "handoff_manifest_path",
+    ):
+        _required_string(payload, field)
+    for field in (
+        "signal_bundle_manifest_sha256",
+        "handoff_manifest_sha256",
+        "source_family_catalog_manifest_sha256",
+        "consumer_contract_registry_manifest_sha256",
+    ):
+        _required_sha256(payload, field)
+    expected_target_path = f"market_data.{_required_string(payload, 'market_data_key')}"
+    if payload.get("target_path") != expected_target_path:
+        raise ValueError("runtime injection plan target_path mismatch")
 
 
 def _validate_runtime_consumption_audit(payload: Mapping[str, Any]) -> None:

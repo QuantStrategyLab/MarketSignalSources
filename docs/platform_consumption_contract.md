@@ -124,6 +124,24 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --pretty
 ```
 
+After a runtime audit succeeds, platforms can also persist the minimal injection
+plan and validate it separately:
+
+```bash
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --platform-handoff-index ./data/output/platform_handoffs/index.json \
+  --consumer us_equity:ibit_smart_dca \
+  --as-of 2026-06-19 \
+  --require-all-known-families \
+  --require-all-known-consumers \
+  --output-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
+  --pretty
+
+python -m market_signal_sources.cli.audit_signal_consumption \
+  --validate-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
+  --pretty
+```
+
 For runtime handoffs, the audit summary must show
 `ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
 expected `runtime_market_data_key`, such as `derived_indicators`.
