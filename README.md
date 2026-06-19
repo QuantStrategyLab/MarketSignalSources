@@ -173,6 +173,26 @@ python -m market_signal_sources.cli.list_consumer_contracts \
 Validation rejects schema drift, unknown consumers, duplicate fields, and
 missing known consumers, plus forbidden sensitive key names such as token,
 secret, cookie, or signed URL.
+The validation summary also includes `canonical_registry_payload_sha256`,
+`local_registry_payload_sha256`, and `local_contract_registry_verified`; when
+`--require-all-known-consumers` is used, these fields prove the full registry is
+logically identical to this repository's local consumer contract table, even if
+JSON formatting or contract order differs.
+
+Strategy repositories can export their own local registry payload and hand that
+file back to this validator as a two-way drift check:
+
+```bash
+python -m us_equity_strategies.signals.signal_bundle_cli \
+  --local-consumer-contract-registry \
+  > ./tmp/us_equity_local_consumers.json
+
+python -m market_signal_sources.cli.list_consumer_contracts \
+  --validate-json ./tmp/us_equity_local_consumers.json \
+  --require-all-known-consumers \
+  --pretty
+```
+
 For platform handoff, publish and validate this manifest together with the
 source family catalog manifest below.
 

@@ -141,6 +141,8 @@ def write_consumer_contract_registry(
     missing_known_consumers = sorted(
         set(CONSUMER_REQUIRED_INDICATOR_FIELDS) - set(contract_consumers)
     )
+    canonical_payload_sha256 = _canonical_registry_payload_sha256(payload)
+    local_payload_sha256 = _local_registry_payload_sha256(contract_consumers)
     return {
         "path": str(output_path),
         "schema_version": payload["schema_version"],
@@ -150,6 +152,11 @@ def write_consumer_contract_registry(
         "known_consumer_count": len(CONSUMER_REQUIRED_INDICATOR_FIELDS),
         "missing_known_consumers": missing_known_consumers,
         "all_known_consumers_present": not missing_known_consumers,
+        "canonical_registry_payload_sha256": canonical_payload_sha256,
+        "local_registry_payload_sha256": local_payload_sha256,
+        "local_contract_registry_verified": (
+            canonical_payload_sha256 == local_payload_sha256
+        ),
         "sha256": _sha256_file(output_path),
         "size_bytes": output_path.stat().st_size,
     }
@@ -220,6 +227,8 @@ def validate_consumer_contract_registry_file(
     missing_known_consumers = sorted(
         set(CONSUMER_REQUIRED_INDICATOR_FIELDS) - set(consumers)
     )
+    canonical_payload_sha256 = _canonical_registry_payload_sha256(payload)
+    local_payload_sha256 = _local_registry_payload_sha256(consumers)
     return {
         "path": str(registry_path),
         "schema_version": payload["schema_version"],
@@ -229,6 +238,11 @@ def validate_consumer_contract_registry_file(
         "known_consumer_count": len(CONSUMER_REQUIRED_INDICATOR_FIELDS),
         "missing_known_consumers": missing_known_consumers,
         "all_known_consumers_present": not missing_known_consumers,
+        "canonical_registry_payload_sha256": canonical_payload_sha256,
+        "local_registry_payload_sha256": local_payload_sha256,
+        "local_contract_registry_verified": (
+            canonical_payload_sha256 == local_payload_sha256
+        ),
         "sha256": _sha256_file(registry_path),
         "size_bytes": registry_path.stat().st_size,
     }
@@ -364,6 +378,15 @@ def _consumer_contract_manifest_summary(
         "known_consumer_count": registry_summary["known_consumer_count"],
         "missing_known_consumers": registry_summary["missing_known_consumers"],
         "all_known_consumers_present": registry_summary["all_known_consumers_present"],
+        "canonical_registry_payload_sha256": registry_summary[
+            "canonical_registry_payload_sha256"
+        ],
+        "local_registry_payload_sha256": registry_summary[
+            "local_registry_payload_sha256"
+        ],
+        "local_contract_registry_verified": registry_summary[
+            "local_contract_registry_verified"
+        ],
     }
 
 
@@ -516,6 +539,45 @@ def _validate_consumer_contract_record(
         raise SignalConsumerContractError(
             f"consumer contract {consumer} required fields drift from registry"
         )
+
+
+def _canonical_registry_payload_sha256(payload: Mapping[str, Any]) -> str:
+    normalized = {
+        "schema_version": MARKET_SIGNAL_CONSUMER_CONTRACTS_SCHEMA_VERSION,
+        "canonical_input": CANONICAL_INPUT_DERIVED_INDICATORS,
+        "contracts": sorted(
+            (
+                {
+                    "consumer": str(contract["consumer"]),
+                    "canonical_input": CANONICAL_INPUT_DERIVED_INDICATORS,
+                    "required_indicator_fields_by_symbol": {
+                        str(symbol): [
+                            str(field)
+                            for field in fields
+                        ]
+                        for symbol, fields in sorted(
+                            contract["required_indicator_fields_by_symbol"].items()
+                        )
+                    },
+                }
+                for contract in payload["contracts"]
+            ),
+            key=lambda contract: str(contract["consumer"]),
+        ),
+    }
+    return hashlib.sha256(
+        json.dumps(
+            normalized,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _local_registry_payload_sha256(consumers: Iterable[str]) -> str:
+    return _canonical_registry_payload_sha256(
+        consumer_contract_registry_payload(consumers=tuple(sorted(consumers)))
+    )
 
 
 def _validate_no_sensitive_fields(value: object, *, path: str = "registry") -> None:

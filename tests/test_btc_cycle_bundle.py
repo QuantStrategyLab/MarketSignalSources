@@ -1420,6 +1420,10 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     ]
     assert summary["sha256"] == _sha256(output_json)
     assert summary["size_bytes"] == output_json.stat().st_size
+    assert summary["local_contract_registry_verified"] is True
+    assert summary["canonical_registry_payload_sha256"] == summary[
+        "local_registry_payload_sha256"
+    ]
     assert payload["contracts"][0]["consumer"] == "us_equity:ibit_smart_dca"
 
     result = list_contracts_main(
@@ -1446,6 +1450,7 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
         "research:ibit_btc_ahr999_mayer_precomputed_variants"
     ]
     assert validate_summary["all_known_consumers_present"] is False
+    assert validate_summary["local_contract_registry_verified"] is True
 
     validate_result = list_contracts_main(
         [
@@ -1458,6 +1463,9 @@ def test_consumer_contract_registry_can_be_written_as_artifact(tmp_path, capsys)
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["sha256"] == _sha256(output_json)
     assert cli_validate_summary["consumer_count"] == 1
+    assert cli_validate_summary["canonical_registry_payload_sha256"] == (
+        cli_validate_summary["local_registry_payload_sha256"]
+    )
 
     require_all_result = list_contracts_main(
         [
@@ -1487,6 +1495,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
     assert summary["registry_sha256"] == _sha256(registry_path)
     assert summary["manifest_sha256"] == _sha256(manifest_path)
     assert summary["all_known_consumers_present"] is True
+    assert summary["local_contract_registry_verified"] is True
     assert manifest["registry_path"] == "market_signal_consumers.json"
     assert manifest["registry_sha256"] == _sha256(registry_path)
 
@@ -1498,6 +1507,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
     assert validation_summary["consumer_count"] == 8
+    assert validation_summary["local_contract_registry_verified"] is True
 
     cli_output_dir = tmp_path / "cli-contracts"
     result = list_contracts_main(
@@ -1514,6 +1524,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
     assert cli_summary["registry_sha256"] == _sha256(
         cli_output_dir / "market_signal_consumers.json"
     )
+    assert cli_summary["local_contract_registry_verified"] is True
 
     validate_result = list_contracts_main(
         [
@@ -1526,6 +1537,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
     assert validate_result == 0
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["manifest_sha256"] == _sha256(cli_manifest_path)
+    assert cli_validate_summary["local_contract_registry_verified"] is True
 
     registry_payload = json.loads(registry_path.read_text(encoding="utf-8"))
     registry_path.write_text(
@@ -1549,6 +1561,10 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
     assert summary["consumer_count"] == 8
+    assert summary["local_contract_registry_verified"] is True
+    assert summary["canonical_registry_payload_sha256"] == summary[
+        "local_registry_payload_sha256"
+    ]
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
