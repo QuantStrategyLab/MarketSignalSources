@@ -1769,6 +1769,9 @@ def test_cli_exports_us_equity_public_context_research_csv(
     shiller_csv = tmp_path / "shiller_cape.csv"
     output_csv = tmp_path / "research" / "us_equity_public_context.csv"
     manifest_path = tmp_path / "research" / "us_equity_public_context.manifest.json"
+    quality_report_path = (
+        tmp_path / "research" / "us_equity_public_context.quality.json"
+    )
     pd.DataFrame(
         {
             "DATE": [
@@ -1798,6 +1801,8 @@ def test_cli_exports_us_equity_public_context_research_csv(
             str(output_csv),
             "--manifest-path",
             str(manifest_path),
+            "--quality-report",
+            str(quality_report_path),
             "--as-of",
             "2025-01-07",
             "--pretty",
@@ -1808,8 +1813,11 @@ def test_cli_exports_us_equity_public_context_research_csv(
     summary = json.loads(capsys.readouterr().out)
     exported = pd.read_csv(output_csv)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
     assert summary["artifact_type"] == "us_equity_context_research_csv"
     assert summary["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert summary["quality_report"] == str(quality_report_path)
+    assert summary["quality_status"] == "warn"
     assert summary["row_count"] == 3
     assert list(exported.columns) == [
         "date",
@@ -1834,6 +1842,19 @@ def test_cli_exports_us_equity_public_context_research_csv(
     ]
     assert manifest["input_sources"][1]["sha256"] == _sha256(shiller_csv)
     assert manifest["transform_parameters"]["cape_alignment"] == "asof_backward"
+    assert quality_report["schema_version"] == (
+        "us_equity_public_context_availability_report.v1"
+    )
+    assert quality_report["artifact_type"] == (
+        "us_equity_public_context_availability_report"
+    )
+    assert quality_report["quality_status"] == "warn"
+    assert quality_report["public_context_row_count"] == 3
+    assert quality_report["input_sources"][0]["source_id"] == "fred.vixcls"
+    assert quality_report["input_sources"][0]["null_value_count"] == 1
+    assert quality_report["input_sources"][0]["filtered_after_as_of_count"] == 1
+    assert quality_report["input_sources"][1]["source_id"] == "shiller.cape_monthly"
+    assert quality_report["input_sources"][1]["filtered_after_as_of_count"] == 1
 
     validation_summary = validate_research_export_manifest(
         manifest_path,

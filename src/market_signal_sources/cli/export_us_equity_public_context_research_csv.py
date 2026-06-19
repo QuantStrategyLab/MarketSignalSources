@@ -14,6 +14,7 @@ from market_signal_sources.derived.us_equity import (
     NASDAQ_SP500_CONTEXT_ARTIFACT_TYPE,
     NASDAQ_SP500_CONTEXT_TRANSFORM,
     build_nasdaq_sp500_public_context_frame,
+    write_nasdaq_sp500_public_context_availability_report,
 )
 
 
@@ -24,6 +25,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         fred_frame = pd.read_csv(args.fred_vixcls_csv)
         shiller_frame = pd.read_csv(args.shiller_cape_csv)
+        quality_report = None
+        if args.quality_report is not None:
+            quality_report = write_nasdaq_sp500_public_context_availability_report(
+                args.quality_report,
+                fred_vixcls_csv=args.fred_vixcls_csv,
+                shiller_cape_csv=args.shiller_cape_csv,
+                as_of=args.as_of,
+                fred_date_column=args.fred_date_column,
+                fred_vix_column=args.fred_vix_column,
+                shiller_date_column=args.shiller_date_column,
+                shiller_cape_column=args.shiller_cape_column,
+                min_history_rows=args.min_history,
+                max_allowed_gap_days=args.max_allowed_gap_days,
+            )
+            if quality_report["quality_status"] == "fail":
+                raise ValueError(
+                    "US equity public context availability report failed: "
+                    + ",".join(quality_report["failure_reasons"])
+                )
         output = build_nasdaq_sp500_public_context_frame(
             fred_vixcls_frame=fred_frame,
             shiller_cape_frame=shiller_frame,
@@ -85,6 +105,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "columns": list(output.columns),
         "input_sources": list(input_sources),
     }
+    if args.quality_report is not None and quality_report is not None:
+        summary["quality_report"] = str(args.quality_report)
+        summary["quality_status"] = quality_report["quality_status"]
     print(json.dumps(summary, indent=2 if args.pretty else None, sort_keys=True))
     return 0
 
@@ -101,6 +124,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path)
     parser.add_argument("--as-of")
     parser.add_argument("--min-history", type=int, default=1)
+    parser.add_argument("--max-allowed-gap-days", type=int, default=7)
+    parser.add_argument("--quality-report", type=Path)
     parser.add_argument("--source-version", default="0.1.0")
     parser.add_argument("--fred-date-column", default="DATE")
     parser.add_argument("--fred-vix-column", default="VIXCLS")

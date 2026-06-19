@@ -323,6 +323,7 @@ python -m market_signal_sources.cli.export_us_equity_public_context_research_csv
   --shiller-cape-csv ./shiller_cape.csv \
   --output-csv ./data/output/research/us_equity_public_context.csv \
   --manifest-path ./data/output/research/us_equity_public_context.manifest.json \
+  --quality-report ./data/output/research/us_equity_public_context.quality.json \
   --as-of 2026-06-19 \
   --pretty
 ```
@@ -334,6 +335,10 @@ and writes the same `artifact_type=us_equity_context_research_csv` /
 satisfies `research:nasdaq_sp500_cape_vix_external_context_precomputed`; it does
 not satisfy the full `research:nasdaq_sp500_external_context_precomputed`
 consumer because that consumer also requires `breadth_above_sma200_pct`.
+The optional public quality report uses
+`us_equity_public_context_availability_report.v1` and audits the FRED/Shiller
+source hashes, missing columns, invalid dates, null or non-positive values,
+duplicates, `as_of` filtering, and date gaps in the merged public context.
 
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match

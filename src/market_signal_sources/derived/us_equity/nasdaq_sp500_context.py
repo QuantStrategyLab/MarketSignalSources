@@ -13,6 +13,9 @@ import pandas as pd
 NASDAQ_SP500_CONTEXT_AVAILABILITY_SCHEMA_VERSION = (
     "us_equity_context_availability_report.v1"
 )
+NASDAQ_SP500_PUBLIC_CONTEXT_AVAILABILITY_SCHEMA_VERSION = (
+    "us_equity_public_context_availability_report.v1"
+)
 NASDAQ_SP500_CONTEXT_ARTIFACT_TYPE = "us_equity_context_research_csv"
 NASDAQ_SP500_CONTEXT_TRANSFORM = "us_equity.nasdaq_sp500.context.v1"
 NASDAQ_SP500_CONTEXT_FIELDS: tuple[str, ...] = (
@@ -374,6 +377,105 @@ def build_nasdaq_sp500_context_availability_report(
     )
 
 
+def build_nasdaq_sp500_public_context_availability_report(
+    *,
+    fred_vixcls_csv: str | PathLike[str],
+    shiller_cape_csv: str | PathLike[str],
+    as_of: str | None = None,
+    fred_date_column: str = "DATE",
+    fred_vix_column: str = "VIXCLS",
+    shiller_date_column: str = "date",
+    shiller_cape_column: str = "cape",
+    min_history_rows: int = 1,
+    max_allowed_gap_days: int = 7,
+) -> dict[str, Any]:
+    """Build a quality report for local public CAPE/VIX context inputs."""
+
+    fred_path = Path(fred_vixcls_csv)
+    shiller_path = Path(shiller_cape_csv)
+    fred_raw = pd.read_csv(fred_path)
+    shiller_raw = pd.read_csv(shiller_path)
+    fred_audit = _public_context_source_audit(
+        fred_raw,
+        source_id="fred.vixcls",
+        path=fred_path,
+        date_column=fred_date_column,
+        value_column=fred_vix_column,
+        output_column="vix",
+        as_of=as_of,
+    )
+    shiller_audit = _public_context_source_audit(
+        shiller_raw,
+        source_id="shiller.cape_monthly",
+        path=shiller_path,
+        date_column=shiller_date_column,
+        value_column=shiller_cape_column,
+        output_column="cape",
+        as_of=as_of,
+    )
+    source_audits = (fred_audit, shiller_audit)
+    failure_reasons: list[str] = []
+    warning_reasons: list[str] = []
+    for audit in source_audits:
+        failure_reasons.extend(str(reason) for reason in audit["failure_reasons"])
+        warning_reasons.extend(str(reason) for reason in audit["warning_reasons"])
+
+    normalized_fred = fred_audit["normalized_frame"]
+    normalized_shiller = shiller_audit["normalized_frame"]
+    public_context_row_count = 0
+    first_date = ""
+    last_date = ""
+    max_gap_days = 0
+    gap_count = 0
+    if not failure_reasons:
+        vix = normalized_fred.copy()
+        cape = normalized_shiller.copy()
+        vix["vix_percentile"] = _expanding_rank_percentile(vix["vix"])
+        cape["cape_percentile"] = _expanding_rank_percentile(cape["cape"])
+        output = pd.merge_asof(
+            vix.loc[:, ["date", "vix_percentile"]],
+            cape.loc[:, ["date", "cape_percentile"]],
+            on="date",
+            direction="backward",
+        ).dropna(subset=NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS)
+        public_context_row_count = len(output)
+        if public_context_row_count < int(min_history_rows):
+            failure_reasons.append("insufficient_public_context_history")
+        if not output.empty:
+            first_date = output.iloc[0]["date"].date().isoformat()
+            last_date = output.iloc[-1]["date"].date().isoformat()
+            max_gap_days = _max_gap_days(output["date"]) if len(output) > 1 else 0
+            gap_count = (
+                _gap_count_above_threshold(output["date"], max_allowed_gap_days)
+                if len(output) > 1
+                else 0
+            )
+            if gap_count:
+                warning_reasons.append("public_context_date_gaps_above_threshold")
+
+    unique_warnings = tuple(dict.fromkeys(warning_reasons))
+    unique_failures = tuple(dict.fromkeys(failure_reasons))
+    return {
+        "schema_version": NASDAQ_SP500_PUBLIC_CONTEXT_AVAILABILITY_SCHEMA_VERSION,
+        "artifact_type": "us_equity_public_context_availability_report",
+        "quality_status": _quality_status(unique_failures, unique_warnings),
+        "failure_reasons": list(unique_failures),
+        "warning_reasons": list(unique_warnings),
+        "as_of": None if as_of is None else pd.Timestamp(as_of).normalize().date().isoformat(),
+        "min_history_rows": int(min_history_rows),
+        "max_allowed_gap_days": int(max_allowed_gap_days),
+        "input_sources": [
+            _public_context_source_report(audit)
+            for audit in source_audits
+        ],
+        "public_context_row_count": int(public_context_row_count),
+        "first_date": first_date,
+        "last_date": last_date,
+        "max_gap_days": int(max_gap_days),
+        "gap_count_above_threshold": int(gap_count),
+    }
+
+
 def write_nasdaq_sp500_context_availability_report(
     path: str | PathLike[str],
     input_csv: str | PathLike[str],
@@ -382,6 +484,22 @@ def write_nasdaq_sp500_context_availability_report(
     """Write a US equity context availability report artifact."""
 
     report = build_nasdaq_sp500_context_availability_report(input_csv, **kwargs)
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return report
+
+
+def write_nasdaq_sp500_public_context_availability_report(
+    path: str | PathLike[str],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Write a public CAPE/VIX context availability report artifact."""
+
+    report = build_nasdaq_sp500_public_context_availability_report(**kwargs)
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
@@ -686,6 +804,126 @@ def _gap_count_above_threshold(dates: pd.Series, threshold_days: int) -> int:
     return int((gaps > int(threshold_days)).sum())
 
 
+def _public_context_source_audit(
+    frame: pd.DataFrame,
+    *,
+    source_id: str,
+    path: Path,
+    date_column: str,
+    value_column: str,
+    output_column: str,
+    as_of: str | None,
+) -> dict[str, Any]:
+    selected_columns = {"date": date_column, "value": value_column}
+    missing_columns = [
+        column
+        for column in selected_columns.values()
+        if column not in frame.columns
+    ]
+    failure_reasons = [
+        f"{source_id}:missing_required_column:{column}"
+        for column in missing_columns
+    ]
+    empty = pd.DataFrame({"date": pd.Series(dtype="datetime64[ns]"), output_column: pd.Series(dtype=float)})
+    if missing_columns:
+        return {
+            "source_id": source_id,
+            "path": path,
+            "sha256": _sha256_file(path),
+            "size_bytes": path.stat().st_size,
+            "selected_columns": selected_columns,
+            "source_columns": tuple(str(column) for column in frame.columns),
+            "raw_row_count": len(frame),
+            "normalized_row_count": 0,
+            "filtered_after_as_of_count": 0,
+            "invalid_date_count": 0,
+            "null_value_count": 0,
+            "non_positive_value_count": 0,
+            "duplicate_date_count": 0,
+            "first_date": "",
+            "last_date": "",
+            "failure_reasons": tuple(failure_reasons),
+            "warning_reasons": (),
+            "normalized_frame": empty,
+        }
+
+    dates = pd.to_datetime(frame[date_column], errors="coerce").dt.normalize()
+    values = pd.to_numeric(frame[value_column], errors="coerce")
+    invalid_date_count = int(dates.isna().sum())
+    null_value_count = int(values.isna().sum())
+    non_positive_value_count = int((values <= 0.0).fillna(False).sum())
+    usable = pd.DataFrame({"date": dates, output_column: values}).dropna(
+        subset=("date", output_column)
+    )
+    usable = usable.loc[usable[output_column] > 0.0]
+    filtered_after_as_of_count = 0
+    if as_of:
+        cutoff = pd.Timestamp(as_of).normalize()
+        filtered_after_as_of_count = int((usable["date"] > cutoff).sum())
+        usable = usable.loc[usable["date"] <= cutoff]
+    duplicate_date_count = int(usable.duplicated(subset=("date",)).sum())
+    normalized = (
+        usable.sort_values("date")
+        .drop_duplicates(subset=("date",), keep="last")
+        .reset_index(drop=True)
+    )
+    if normalized.empty:
+        failure_reasons.append(f"{source_id}:insufficient_positive_history")
+    warning_reasons: list[str] = []
+    if invalid_date_count:
+        warning_reasons.append(f"{source_id}:invalid_dates_dropped")
+    if null_value_count:
+        warning_reasons.append(f"{source_id}:null_values_dropped")
+    if non_positive_value_count:
+        warning_reasons.append(f"{source_id}:non_positive_values_dropped")
+    if filtered_after_as_of_count:
+        warning_reasons.append(f"{source_id}:rows_after_as_of_filtered")
+    if duplicate_date_count:
+        warning_reasons.append(f"{source_id}:duplicate_dates_collapsed")
+    return {
+        "source_id": source_id,
+        "path": path,
+        "sha256": _sha256_file(path),
+        "size_bytes": path.stat().st_size,
+        "selected_columns": selected_columns,
+        "source_columns": tuple(str(column) for column in frame.columns),
+        "raw_row_count": len(frame),
+        "normalized_row_count": len(normalized),
+        "filtered_after_as_of_count": filtered_after_as_of_count,
+        "invalid_date_count": invalid_date_count,
+        "null_value_count": null_value_count,
+        "non_positive_value_count": non_positive_value_count,
+        "duplicate_date_count": duplicate_date_count,
+        "first_date": "" if normalized.empty else normalized.iloc[0]["date"].date().isoformat(),
+        "last_date": "" if normalized.empty else normalized.iloc[-1]["date"].date().isoformat(),
+        "failure_reasons": tuple(failure_reasons),
+        "warning_reasons": tuple(warning_reasons),
+        "normalized_frame": normalized,
+    }
+
+
+def _public_context_source_report(audit: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source_id": audit["source_id"],
+        "path": str(audit["path"]),
+        "sha256": audit["sha256"],
+        "size_bytes": audit["size_bytes"],
+        "selected_columns": dict(audit["selected_columns"]),
+        "source_columns": list(audit["source_columns"]),
+        "raw_row_count": int(audit["raw_row_count"]),
+        "normalized_row_count": int(audit["normalized_row_count"]),
+        "filtered_after_as_of_count": int(audit["filtered_after_as_of_count"]),
+        "invalid_date_count": int(audit["invalid_date_count"]),
+        "null_value_count": int(audit["null_value_count"]),
+        "non_positive_value_count": int(audit["non_positive_value_count"]),
+        "duplicate_date_count": int(audit["duplicate_date_count"]),
+        "first_date": str(audit["first_date"]),
+        "last_date": str(audit["last_date"]),
+        "failure_reasons": list(audit["failure_reasons"]),
+        "warning_reasons": list(audit["warning_reasons"]),
+    }
+
+
 def _source_metric_frame(
     frame: pd.DataFrame,
     *,
@@ -704,6 +942,7 @@ def _source_metric_frame(
             output_column: pd.to_numeric(frame[value_column], errors="coerce"),
         }
     ).dropna(subset=("date", output_column))
+    output = output.loc[output[output_column] > 0.0]
     return (
         output.sort_values("date")
         .drop_duplicates(subset=("date",), keep="last")

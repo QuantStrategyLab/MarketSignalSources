@@ -201,6 +201,9 @@ does not fetch network data or parse broker/platform state. It computes
 expanding point-in-time percentiles per source first, then aligns CAPE to VIX
 dates with backward as-of logic so monthly CAPE values are not repeatedly counted
 when calculating their own percentile.
+Its `us_equity_public_context_availability_report.v1` quality report audits the
+two public source snapshots and the merged CAPE/VIX output. It deliberately does
+not claim breadth availability or point-in-time constituent coverage.
 
 The US equity context availability report records missing provider timestamps,
 provider timestamps after `as_of`, missing breadth universe snapshot ids, and
