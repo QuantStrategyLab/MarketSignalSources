@@ -104,6 +104,59 @@ For runtime handoffs, the audit summary must show
 `ready_for_runtime_injection=true`, `runtime_injection_allowed=true`, and the
 expected `runtime_market_data_key`, such as `derived_indicators`.
 
+## Platform Adapter Playbook
+
+A consuming strategy platform should keep the adapter small and treat
+`market_signal_consumption_audit.v1` as the handoff decision record. The platform
+adapter should not import provider modules or recompute indicators.
+
+Recommended runtime adapter responsibilities:
+
+- Read a strategy config that names the expected `consumer`, handoff index or
+  handoff manifest, optional `as_of`, and accepted freshness statuses.
+- Run the consumption audit in CI before deploy and again at startup before the
+  strategy is enabled.
+- Require `ready_for_runtime_injection=true`,
+  `runtime_injection_allowed=true`, `consumer_contract_verified=true`, and
+  `source_catalog_verified=true`.
+- Load only the signal bundle pinned by the audited handoff, then inject the
+  payload under `runtime_market_data_key`.
+- Persist the audit summary path or JSON next to the strategy deployment record
+  so an order run can be traced back to exact bundle, source catalog, and
+  consumer registry hashes.
+
+Recommended configuration shape:
+
+```json
+{
+  "strategy": "ibit_smart_dca",
+  "signal_consumer": "us_equity:ibit_smart_dca",
+  "signal_handoff_index": "./data/output/platform_handoffs/index.json",
+  "signal_as_of": "2026-06-19",
+  "accepted_freshness_statuses": ["fresh"]
+}
+```
+
+The platform should convert a successful audit into this runtime injection:
+
+```python
+market_data[audit["runtime_market_data_key"]] = bundle[
+    audit["runtime_payload_field"]
+]
+```
+
+Failure policy:
+
+- If audit validation fails, the platform must not enable the strategy run.
+- If no matching fresh handoff exists for the requested `as_of`, either block
+  the run or fall back only to a previously approved deployment record; do not
+  silently use an arbitrary latest file.
+- If a runtime strategy asks for a `research:` consumer or a research handoff,
+  keep `runtime_injection_allowed=false` and fail the runtime adapter.
+- If a required field changes, update the consumer registry and strategy-side
+  expected consumer id together; a hash-valid but contract-insufficient bundle
+  is not deployable.
+
 ## Research Flow
 
 1. Export a `research_export.v1` CSV and manifest from the relevant source
