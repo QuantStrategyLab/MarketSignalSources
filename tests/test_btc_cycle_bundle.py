@@ -1777,6 +1777,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         consumer="us_equity:ibit_smart_dca",
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert consumption_summary["schema_version"] == (
         "market_signal_consumption_audit.v1"
@@ -1794,6 +1795,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert consumption_summary["matched_source_family_count"] == 1
     assert consumption_summary["linked_manifest_sha256s_verified"] is True
     assert consumption_summary["consumer_contract_verified"] is True
+    assert consumption_summary["all_runtime_consumers_covered"] is True
     audit_artifact_path = tmp_path / "consumption_audit.json"
     audit_artifact_summary = write_consumption_audit_artifact(
         audit_artifact_path,
@@ -1804,6 +1806,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert audit_artifact_summary["consumption_mode"] == "runtime_platform"
     assert audit_artifact_summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert audit_artifact_summary["all_runtime_consumers_covered"] is True
     validated_audit_artifact = validate_consumption_audit_file(audit_artifact_path)
     assert validated_audit_artifact["sha256"] == audit_artifact_summary["sha256"]
     bad_audit = json.loads(audit_artifact_path.read_text(encoding="utf-8"))
@@ -1852,6 +1855,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         as_of="2025-09-18",
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert index_consumption_summary["handoff_source"] == "platform_handoff_index"
     assert index_consumption_summary["index_handoff_count"] == 1
@@ -1869,6 +1873,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "2025-09-18",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
@@ -1877,6 +1882,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_consumption_summary["consumption_mode"] == "runtime_platform"
     assert cli_consumption_summary["runtime_injection_allowed"] is True
     assert cli_consumption_summary["consumer"] == "us_equity:ibit_smart_dca"
+    assert cli_consumption_summary["all_runtime_consumers_covered"] is True
     cli_audit_artifact_path = tmp_path / "cli_consumption_audit.json"
     write_audit_result = audit_consumption_main(
         [
@@ -1888,6 +1894,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "2025-09-18",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--output-json",
             str(cli_audit_artifact_path),
             "--pretty",
@@ -1897,6 +1904,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     cli_audit_artifact_summary = json.loads(capsys.readouterr().out)
     assert cli_audit_artifact_summary["path"] == str(cli_audit_artifact_path)
     assert cli_audit_artifact_summary["consumption_mode"] == "runtime_platform"
+    assert cli_audit_artifact_summary["all_runtime_consumers_covered"] is True
     validate_audit_result = audit_consumption_main(
         [
             "--validate-json",
@@ -1919,6 +1927,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "2025-09-18",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--runtime-injection-plan",
             "--pretty",
         ]
@@ -1945,6 +1954,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "2025-09-18",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--output-runtime-plan-json",
             str(cli_plan_artifact_path),
             "--pretty",

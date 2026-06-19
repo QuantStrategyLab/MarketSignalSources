@@ -92,6 +92,7 @@ def audit_signal_consumption(
     accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Validate exactly one handoff source for an explicit downstream consumer."""
 
@@ -118,6 +119,7 @@ def audit_signal_consumption(
             consumer=target_consumer,
             require_all_known_families=require_all_known_families,
             require_all_known_consumers=require_all_known_consumers,
+            require_runtime_consumer_coverage=require_runtime_consumer_coverage,
             expected_canonical_input=expected_canonical_input,
             accepted_freshness_statuses=accepted_freshness_statuses,
         )
@@ -136,6 +138,7 @@ def audit_signal_consumption(
             accepted_freshness_statuses=accepted_freshness_statuses,
             require_all_known_families=require_all_known_families,
             require_all_known_consumers=require_all_known_consumers,
+            require_runtime_consumer_coverage=require_runtime_consumer_coverage,
         )
         return _runtime_consumption_audit(
             summary,
@@ -148,6 +151,7 @@ def audit_signal_consumption(
         consumer=target_consumer,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
     return _research_consumption_audit(summary)
 
@@ -617,6 +621,9 @@ def validate_consumption_audit_file(
         "linked_manifest_sha256s_verified": payload[
             "linked_manifest_sha256s_verified"
         ],
+        "all_runtime_consumers_covered": bool(
+            payload.get("all_runtime_consumers_covered", False)
+        ),
         "sha256": _sha256_file(audit_path),
         "size_bytes": audit_path.stat().st_size,
     }
@@ -678,6 +685,9 @@ def _runtime_consumption_audit(
         "all_consumer_contracts_satisfied": summary[
             "all_consumer_contracts_satisfied"
         ],
+        "all_runtime_consumers_covered": bool(
+            summary.get("all_runtime_consumers_covered", False)
+        ),
         "consumer_contract_count": summary["consumer_contract_count"],
         "consumer_contracts": summary["consumer_contracts"],
         "all_known_consumers_present": summary["all_known_consumers_present"],
@@ -733,6 +743,9 @@ def _research_consumption_audit(summary: dict[str, Any]) -> dict[str, Any]:
         "all_consumer_contracts_satisfied": summary[
             "all_consumer_contracts_satisfied"
         ],
+        "all_runtime_consumers_covered": bool(
+            summary.get("all_runtime_consumers_covered", False)
+        ),
         "consumer_contract_count": summary["consumer_contract_count"],
         "consumer_contracts": summary["consumer_contracts"],
         "all_known_consumers_present": summary["all_known_consumers_present"],
@@ -987,6 +1000,13 @@ def _validate_runtime_consumption_audit(payload: Mapping[str, Any]) -> None:
         raise ValueError("runtime consumption audit is marked research-ready")
     if int(payload.get("matched_source_family_count", 0)) <= 0:
         raise ValueError("runtime consumption audit has no matched source family")
+    if "all_runtime_consumers_covered" in payload and not isinstance(
+        payload["all_runtime_consumers_covered"],
+        bool,
+    ):
+        raise ValueError(
+            "runtime consumption audit all_runtime_consumers_covered must be a bool"
+        )
 
 
 def _validate_research_consumption_audit(payload: Mapping[str, Any]) -> None:
@@ -1017,6 +1037,13 @@ def _validate_research_consumption_audit(payload: Mapping[str, Any]) -> None:
         raise ValueError("research consumption audit is runtime-ready")
     if payload.get("runtime_injection_allowed") is not False:
         raise ValueError("research consumption audit allows runtime injection")
+    if "all_runtime_consumers_covered" in payload and not isinstance(
+        payload["all_runtime_consumers_covered"],
+        bool,
+    ):
+        raise ValueError(
+            "research consumption audit all_runtime_consumers_covered must be a bool"
+        )
 
 
 def _required_sha256(payload: Mapping[str, Any], field: str) -> str:

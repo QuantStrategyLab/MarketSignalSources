@@ -55,6 +55,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 or args.output_runtime_plan_json
                 or args.runtime_injection_plan
                 or args.require_all_known_families
+                or args.require_runtime_consumer_coverage
                 or (
                     args.require_all_known_consumers
                     and not (validating_config_set or validating_deployment_set)
@@ -151,6 +152,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 as_of=args.as_of,
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
             if args.output_json:
                 payload = write_consumption_audit_artifact(args.output_json, payload)
@@ -253,6 +257,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--require-all-known-consumers",
         action="store_true",
         help="Require the consumer contract registry to include every known consumer.",
+    )
+    parser.add_argument(
+        "--require-runtime-consumer-coverage",
+        action="store_true",
+        help=(
+            "Require source catalog coverage for every known runtime consumer "
+            "before accepting the handoff."
+        ),
     )
     parser.add_argument(
         "--runtime-injection-plan",

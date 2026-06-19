@@ -94,7 +94,9 @@ broader `compatible_profiles` list. `research:*` consumers must use
 but are not runtime-injectable.
 
 The unified consumption audit command runs those checks through the same
-validator path and returns a `market_signal_consumption_audit.v1` summary:
+validator path and returns a `market_signal_consumption_audit.v1` summary. For
+runtime platforms, keep `--require-runtime-consumer-coverage` enabled so the
+audit fails if the source catalog no longer covers every known runtime consumer:
 
 ```bash
 python -m market_signal_sources.cli.audit_signal_consumption \
@@ -103,6 +105,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --pretty
 ```
 
@@ -116,6 +119,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --output-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
   --pretty
 
@@ -134,6 +138,7 @@ python -m market_signal_sources.cli.audit_signal_consumption \
   --as-of 2026-06-19 \
   --require-all-known-families \
   --require-all-known-consumers \
+  --require-runtime-consumer-coverage \
   --output-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
   --pretty
 
@@ -300,6 +305,7 @@ audit = audit_signal_consumption(
     as_of="2026-06-19",
     require_all_known_families=True,
     require_all_known_consumers=True,
+    require_runtime_consumer_coverage=True,
 )
 plan = runtime_signal_injection_plan(audit)
 market_data[plan["market_data_key"]] = bundle[plan["payload_field"]]
