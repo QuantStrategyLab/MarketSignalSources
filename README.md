@@ -170,6 +170,13 @@ python -m market_signal_sources.cli.list_signal_source_families \
   --pretty
 ```
 
+```bash
+python -m market_signal_sources.cli.list_signal_source_families \
+  --validate-json ./data/output/signal_source_families.json \
+  --require-all-known-families \
+  --pretty
+```
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash

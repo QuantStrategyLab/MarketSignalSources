@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+import hashlib
+import json
+from os import PathLike
+from pathlib import Path
 from typing import Any
 
 
@@ -95,6 +99,79 @@ def signal_source_family_catalog_payload(
     }
 
 
+def validate_signal_source_family_catalog(
+    payload: Mapping[str, Any],
+    *,
+    require_all_known_families: bool = False,
+) -> dict[str, Any]:
+    """Validate a signal source family catalog payload."""
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("signal source family catalog payload must be an object")
+    if payload.get("schema_version") != SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION:
+        raise ValueError(
+            "signal source family catalog schema_version must be "
+            f"{SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION!r}"
+        )
+    families = payload.get("families")
+    if not isinstance(families, list):
+        raise ValueError("signal source family catalog families must be a list")
+
+    seen: set[str] = set()
+    family_names: list[str] = []
+    for record in families:
+        if not isinstance(record, dict):
+            raise ValueError("signal source family catalog records must be objects")
+        family = str(record.get("family", "")).strip()
+        if not family:
+            raise ValueError("signal source family catalog record family is required")
+        if family in seen:
+            raise ValueError(f"duplicate signal source family: {family}")
+        seen.add(family)
+        family_names.append(family)
+        expected_record = signal_source_family_record(family)
+        if record != expected_record:
+            raise ValueError(f"signal source family record drift: {family}")
+
+    missing_known_families = sorted(set(SIGNAL_SOURCE_FAMILIES) - set(family_names))
+    if require_all_known_families and missing_known_families:
+        raise ValueError(
+            "missing known signal source families: "
+            + ", ".join(missing_known_families)
+        )
+
+    return {
+        "schema_version": payload["schema_version"],
+        "family_count": len(family_names),
+        "families": family_names,
+        "known_family_count": len(SIGNAL_SOURCE_FAMILIES),
+        "missing_known_families": missing_known_families,
+        "all_known_families_present": not missing_known_families,
+    }
+
+
+def validate_signal_source_family_catalog_file(
+    path: str | PathLike[str],
+    *,
+    require_all_known_families: bool = False,
+) -> dict[str, Any]:
+    """Validate a signal source family catalog JSON artifact."""
+
+    catalog_path = Path(path)
+    with catalog_path.open(encoding="utf-8") as file_obj:
+        payload = json.load(file_obj)
+    summary = validate_signal_source_family_catalog(
+        payload,
+        require_all_known_families=require_all_known_families,
+    )
+    return {
+        "path": str(catalog_path),
+        **summary,
+        "sha256": _sha256_file(catalog_path),
+        "size_bytes": catalog_path.stat().st_size,
+    }
+
+
 def _json_safe_record(record: dict[str, object]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
     for key, value in record.items():
@@ -103,3 +180,11 @@ def _json_safe_record(record: dict[str, object]) -> dict[str, Any]:
         else:
             safe[key] = value
     return safe
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

@@ -41,6 +41,8 @@ from .artifacts.source_catalog import (
     known_signal_source_families,
     signal_source_family_catalog_payload,
     signal_source_family_record,
+    validate_signal_source_family_catalog,
+    validate_signal_source_family_catalog_file,
 )
 from .artifacts.validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
@@ -92,6 +94,8 @@ __all__ = [
     "known_signal_source_families",
     "signal_source_family_catalog_payload",
     "signal_source_family_record",
+    "validate_signal_source_family_catalog",
+    "validate_signal_source_family_catalog_file",
     "required_indicator_fields_for_consumer",
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",

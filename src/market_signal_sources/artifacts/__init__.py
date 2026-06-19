@@ -41,6 +41,8 @@ from .source_catalog import (
     known_signal_source_families,
     signal_source_family_catalog_payload,
     signal_source_family_record,
+    validate_signal_source_family_catalog,
+    validate_signal_source_family_catalog_file,
 )
 from .validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
@@ -84,6 +86,8 @@ __all__ = [
     "known_signal_consumers",
     "signal_source_family_catalog_payload",
     "signal_source_family_record",
+    "validate_signal_source_family_catalog",
+    "validate_signal_source_family_catalog_file",
     "validate_consumer_contract_registry",
     "validate_consumer_contract_registry_file",
     "validate_consumer_contract_registry_manifest",

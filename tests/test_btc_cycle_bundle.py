@@ -369,7 +369,10 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
 
 
-def test_signal_source_family_catalog_cli_prints_json_safe_payload(capsys) -> None:
+def test_signal_source_family_catalog_cli_prints_json_safe_payload(
+    tmp_path,
+    capsys,
+) -> None:
     result = list_families_main(["--family", "crypto.btc_cycle_daily", "--pretty"])
 
     assert result == 0
@@ -384,6 +387,32 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(capsys) -> No
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
     ]
+
+    catalog_path = tmp_path / "signal_source_families.json"
+    catalog_path.write_text(
+        json.dumps(signal_source_family_catalog_payload(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    validate_result = list_families_main(
+        [
+            "--validate-json",
+            str(catalog_path),
+            "--require-all-known-families",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    validation_summary = json.loads(capsys.readouterr().out)
+    assert validation_summary["family_count"] == 1
+    assert validation_summary["all_known_families_present"] is True
+    assert validation_summary["sha256"] == _sha256(catalog_path)
+
+    drifted_payload = signal_source_family_catalog_payload()
+    drifted_payload["families"][0]["transform"] = "crypto.btc.wrong.v1"
+    catalog_path.write_text(json.dumps(drifted_payload), encoding="utf-8")
+    drift_result = list_families_main(["--validate-json", str(catalog_path)])
+    assert drift_result == 2
+    assert "signal source family record drift" in capsys.readouterr().err
 
     unknown_result = list_families_main(["--family", "unknown.family"])
     assert unknown_result == 2
