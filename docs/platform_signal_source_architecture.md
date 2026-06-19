@@ -33,6 +33,9 @@ The platform-facing outputs are:
   transform, freshness policy, produced fields, and compatible consumers.
 - `market_signal_source_family_catalog_manifest.v1`: manifest for the source
   family catalog itself.
+- `market_signal_ownership_matrix.v1`: governance view that maps each consumer
+  to source families, required fields, freshness policies, and provider
+  boundaries.
 - `market_signal_platform_handoff.v1`: platform-facing manifest that pins the
   signal bundle manifest, source family catalog manifest, and consumer contract
   registry manifest as one release unit.
@@ -58,6 +61,9 @@ The platform-facing outputs are:
 - `market_signal_runtime_adapter_deployment.v1`: validation summary proving a
   platform-owned adapter config, saved consumption audit, and optional saved
   runtime plan agree before startup injection.
+- `market_signal_platform_publication.v1`: orchestration summary for publishing
+  one already-built bundle as a dated platform handoff directory with registry,
+  catalog, index, audit, runtime plan, and adapter config artifacts.
 
 For offline strategy research, `research_export.v1` can also pin a
 `quality_report` file record. That keeps public or local context-source quality
@@ -167,6 +173,44 @@ Runtime adapter configuration, rollout approval, and enable/disable state remain
 platform-owned. This repository documents the required fields and validation
 semantics, and can validate saved config/audit/plan consistency, but it does not
 decide whether an account should run a strategy.
+
+The publishing shortcut for a production release job is
+`publish-platform-signal-handoff`. It does not fetch provider data or compute a
+bundle; it starts after a bundle manifest already exists under the dated
+publication directory:
+
+```bash
+python -m market_signal_sources.cli.publish_platform_signal_handoff \
+  --publication-dir ./data/output/platform_handoffs/2026-06-19 \
+  --signal-bundle-manifest ./data/output/platform_handoffs/2026-06-19/bundle/manifest.json \
+  --consumer us_equity:ibit_smart_dca \
+  --index-path ./data/output/platform_handoffs/index.json \
+  --lookup-as-of 2026-06-20 \
+  --pretty
+```
+
+The command writes the consumer registry, source catalog, platform handoff,
+handoff index, consumption audit, runtime plan, and adapter config, then
+validates the adapter config against the current handoff. It defaults to strict
+coverage gates: all known source families, all known consumers, and all runtime
+consumers must be covered unless a release job explicitly opts into a partial
+artifact.
+
+For governance review, publish or inspect the ownership matrix:
+
+```bash
+python -m market_signal_sources.cli.list_signal_ownership_matrix --pretty
+```
+
+This matrix is the source-layer checklist for deciding whether a new runtime
+consumer can be enabled. A consumer is not production-ready until it has at
+least one implemented source family and all required fields are covered.
+
+Runtime fallback is intentionally limited. Platforms may use a validated
+`last_valid` artifact within their configured stale window, but they should not
+fallback to platform-computed indicators when a required unified signal handoff
+is missing. A required signal with no valid artifact should fail fast and alert;
+non-required strategies may keep their legacy behavior.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

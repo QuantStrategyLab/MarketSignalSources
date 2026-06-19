@@ -74,11 +74,13 @@ from .consumption import (
     write_runtime_signal_injection_plan_artifact,
 )
 from .source_catalog import (
+    SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION,
     SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
     SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
     compatible_profiles_for_signal_source_family,
     known_signal_source_families,
     runtime_consumers_for_signal_source_family,
+    signal_ownership_matrix_payload,
     signal_source_runtime_consumer_coverage,
     signal_source_family_consumer_contract_coverage,
     signal_source_family_catalog_payload,
@@ -88,6 +90,10 @@ from .source_catalog import (
     validate_signal_source_family_catalog_manifest,
     write_signal_source_family_catalog,
     write_signal_source_family_catalog_artifacts,
+)
+from .publication import (
+    MARKET_SIGNAL_PLATFORM_PUBLICATION_SCHEMA_VERSION,
+    publish_platform_signal_handoff,
 )
 from .validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
@@ -123,7 +129,9 @@ __all__ = [
     "MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SET_SCHEMA_VERSION",
     "MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION",
     "MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION",
+    "MARKET_SIGNAL_PLATFORM_PUBLICATION_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
+    "SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
     "QUALITY_REPORT_SCHEMA_VERSION",
@@ -143,6 +151,7 @@ __all__ = [
     "consumer_contract_registry_payload",
     "known_signal_source_families",
     "known_signal_consumers",
+    "signal_ownership_matrix_payload",
     "runtime_consumers_for_signal_source_family",
     "signal_source_runtime_consumer_coverage",
     "signal_source_family_consumer_contract_coverage",
@@ -194,5 +203,6 @@ __all__ = [
     "write_signal_bundle_publication_index",
     "upsert_signal_bundle_publication_index",
     "upsert_platform_signal_handoff_index",
+    "publish_platform_signal_handoff",
     "runtime_signal_injection_plan",
 ]

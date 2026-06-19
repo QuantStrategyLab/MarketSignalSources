@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "market-signal-sources"
-version = "0.1.0"
+version = "0.1.1"
 description = "Artifact-first market signal source builders for QuantStrategyLab strategies"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,7 +28,9 @@ export-us-equity-context-research-csv = "market_signal_sources.cli.export_us_equ
 export-us-equity-price-proxy-research-csv = "market_signal_sources.cli.export_us_equity_price_proxy_research_csv:main"
 export-us-equity-public-context-research-csv = "market_signal_sources.cli.export_us_equity_public_context_research_csv:main"
 list-signal-consumer-contracts = "market_signal_sources.cli.list_consumer_contracts:main"
+list-signal-ownership-matrix = "market_signal_sources.cli.list_signal_ownership_matrix:main"
 list-signal-source-families = "market_signal_sources.cli.list_signal_source_families:main"
+publish-platform-signal-handoff = "market_signal_sources.cli.publish_platform_signal_handoff:main"
 validate-quality-report = "market_signal_sources.cli.validate_quality_report:main"
 validate-research-export = "market_signal_sources.cli.validate_research_export:main"
 validate-signal-bundle = "market_signal_sources.cli.validate_signal_bundle:main"
