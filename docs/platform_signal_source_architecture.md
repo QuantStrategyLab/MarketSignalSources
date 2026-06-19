@@ -153,6 +153,9 @@ The audit and runtime plan artifacts are intentionally downstream-facing. They
 do not introduce provider calls or strategy decisions into this repository; they
 only prove that a platform can safely map an already-published signal bundle into
 one canonical strategy input.
+Runtime adapter configuration, rollout approval, and enable/disable state remain
+platform-owned. This repository documents the required fields and validation
+semantics, but it does not decide whether an account should run a strategy.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime

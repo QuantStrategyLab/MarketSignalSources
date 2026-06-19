@@ -209,9 +209,31 @@ Recommended configuration shape:
   "signal_consumer": "us_equity:ibit_smart_dca",
   "signal_handoff_index": "./data/output/platform_handoffs/index.json",
   "signal_as_of": "2026-06-19",
-  "accepted_freshness_statuses": ["fresh"]
+  "accepted_freshness_statuses": ["fresh"],
+  "saved_consumption_audit_json": "./deploy/ibit_smart_dca.audit.json",
+  "saved_runtime_plan_json": "./deploy/ibit_smart_dca.runtime_plan.json"
 }
 ```
+
+Required adapter config semantics:
+
+| Field | Rule |
+| --- | --- |
+| `signal_consumer` | Must be the exact runtime consumer id expected by the strategy profile, for example `us_equity:ibit_smart_dca`; `research:` consumers are invalid for runtime injection. |
+| `signal_handoff_index` / `signal_handoff_manifest` | Provide exactly one lookup source. Use an index when selecting by `as_of`; use a manifest only for a pinned deployment. |
+| `signal_as_of` | Required with `signal_handoff_index`; it selects the latest matching handoff at or before the strategy evaluation date. |
+| `accepted_freshness_statuses` | Keep fail-closed by default. For production DCA profiles this should usually be `["fresh"]`; broader statuses require a strategy owner decision. |
+| `saved_consumption_audit_json` | Required after deploy approval. Startup should revalidate this file before the strategy is enabled. |
+| `saved_runtime_plan_json` | Optional only if the platform derives the runtime plan in memory. If saved, it must match `saved_consumption_audit_json` before injection. |
+
+Invalid combinations should fail before strategy evaluation:
+
+- both `signal_handoff_index` and `signal_handoff_manifest` are set
+- neither handoff lookup field is set
+- `signal_handoff_index` is set without `signal_as_of`
+- `signal_consumer` starts with `research:`
+- `saved_runtime_plan_json` is used without a matching
+  `saved_consumption_audit_json`
 
 The platform should convert a successful audit into this runtime injection:
 
