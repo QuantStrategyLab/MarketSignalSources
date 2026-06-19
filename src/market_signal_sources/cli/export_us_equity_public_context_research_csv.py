@@ -86,6 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "percentile_method": "expanding_rank_percentile",
                 "cape_alignment": "asof_backward",
             },
+            quality_report_path=args.quality_report,
         )
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         print(f"error: {exc}", file=sys.stderr)

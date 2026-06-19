@@ -76,6 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_version=args.source_version,
             as_of=args.as_of,
             min_history=args.min_history,
+            quality_report_path=args.quality_report,
         )
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         print(f"error: {exc}", file=sys.stderr)

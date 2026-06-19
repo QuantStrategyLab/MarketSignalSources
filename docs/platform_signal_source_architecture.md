@@ -40,6 +40,11 @@ The platform-facing outputs are:
   consumers resolve the latest matching handoff by consumer, canonical input,
   freshness, and `as_of`.
 
+For offline strategy research, `research_export.v1` can also pin a
+`quality_report` file record. That keeps public or local context-source quality
+proofs attached to the exact CSV that downstream backtests consume, even when the
+artifact is not a runtime `market_signal_bundle.v1`.
+
 ## Design Pressure
 
 IBIT is a US equity strategy, but its useful signal is crypto-native. That makes

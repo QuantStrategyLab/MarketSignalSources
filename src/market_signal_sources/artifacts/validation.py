@@ -374,6 +374,7 @@ def validate_research_export_manifest(
     )
     input_record = dict(manifest["input_csv"])
     output_record = dict(manifest["output_csv"])
+    quality_record = manifest.get("quality_report")
     input_path = _resolve_manifest_file_path(manifest_path, input_record["path"], field="input_csv.path")
     output_path = _resolve_manifest_file_path(
         manifest_path,
@@ -382,9 +383,33 @@ def validate_research_export_manifest(
     )
     _validate_manifest_file_record(input_record, input_path, field="input_csv")
     _validate_manifest_file_record(output_record, output_path, field="output_csv")
+    quality_summary: dict[str, Any] = {}
+    if quality_record is not None:
+        if not isinstance(quality_record, Mapping):
+            raise SignalBundleValidationError(
+                "research export quality_report must be a mapping"
+            )
+        quality_record = dict(quality_record)
+        quality_path = _resolve_manifest_file_path(
+            manifest_path,
+            quality_record["path"],
+            field="quality_report.path",
+        )
+        _validate_manifest_file_record(
+            quality_record,
+            quality_path,
+            field="quality_report",
+        )
+        quality_summary = {
+            "quality_report_path": str(quality_path),
+            "quality_report_sha256": str(quality_record["sha256"]).strip().lower(),
+            "quality_report_size_bytes": int(quality_record["size_bytes"]),
+            "quality_report_sha256_verified": True,
+            "quality_report_size_bytes_verified": True,
+        }
     _validate_research_export_output_csv_shape(manifest, output_path)
 
-    return {
+    summary = {
         "manifest_path": str(manifest_path.resolve()),
         "schema_version": str(manifest.get("schema_version", "")),
         "artifact_type": str(manifest.get("artifact_type", "")),
@@ -403,6 +428,8 @@ def validate_research_export_manifest(
         "output_csv_sha256": str(output_record["sha256"]).strip().lower(),
         "output_csv_size_bytes": int(output_record["size_bytes"]),
     }
+    summary.update(quality_summary)
+    return summary
 
 
 def signal_bundle_audit_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
@@ -743,6 +770,23 @@ def _validate_research_export_manifest_shape(
         if not isinstance(size_bytes, int) or size_bytes < 0:
             raise SignalBundleValidationError(
                 f"research export {field}.size_bytes must be a non-negative integer"
+            )
+    quality_record = manifest.get("quality_report")
+    if quality_record is not None:
+        if not isinstance(quality_record, Mapping):
+            raise SignalBundleValidationError(
+                "research export quality_report must be a mapping"
+            )
+        for record_field in ("path", "sha256", "size_bytes"):
+            if not _has_non_empty_value(quality_record, record_field):
+                raise SignalBundleValidationError(
+                    f"research export quality_report missing field: {record_field}"
+                )
+        size_bytes = quality_record.get("size_bytes")
+        if not isinstance(size_bytes, int) or size_bytes < 0:
+            raise SignalBundleValidationError(
+                "research export quality_report.size_bytes must be a "
+                "non-negative integer"
             )
 
 

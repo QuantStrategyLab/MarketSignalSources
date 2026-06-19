@@ -27,6 +27,7 @@ def write_research_export_manifest(
     min_history: int,
     input_sources: Iterable[Mapping[str, Any]] | None = None,
     transform_parameters: Mapping[str, Any] | None = None,
+    quality_report_path: str | PathLike[str] | None = None,
 ) -> dict[str, Any]:
     """Write a non-runtime manifest for an offline research CSV export."""
 
@@ -61,6 +62,13 @@ def write_research_export_manifest(
         ]
     if transform_parameters is not None:
         manifest["transform_parameters"] = _json_safe_mapping(transform_parameters)
+    if quality_report_path is not None:
+        quality_path = Path(quality_report_path)
+        manifest["quality_report"] = {
+            "path": str(quality_path),
+            "sha256": sha256_file(quality_path),
+            "size_bytes": quality_path.stat().st_size,
+        }
     target_path = Path(manifest_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(

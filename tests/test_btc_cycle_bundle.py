@@ -1725,6 +1725,11 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     assert manifest["transform"] == "us_equity.nasdaq_sp500.context.v1"
     assert manifest["input_csv"]["sha256"] == _sha256(input_csv)
     assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert manifest["quality_report"]["sha256"] == _sha256(quality_report_path)
+    assert (
+        manifest["quality_report"]["size_bytes"]
+        == quality_report_path.stat().st_size
+    )
     assert quality_report["schema_version"] == (
         "us_equity_context_availability_report.v1"
     )
@@ -1759,6 +1764,8 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     )
     assert validation_summary["row_count"] == 4
     assert validation_summary["columns"] == tuple(exported.columns)
+    assert validation_summary["quality_report_sha256"] == _sha256(quality_report_path)
+    assert validation_summary["quality_report_sha256_verified"] is True
 
 
 def test_cli_exports_us_equity_public_context_research_csv(
@@ -1836,6 +1843,11 @@ def test_cli_exports_us_equity_public_context_research_csv(
     assert manifest["transform"] == "us_equity.nasdaq_sp500.context.v1"
     assert manifest["input_csv"]["sha256"] == _sha256(fred_csv)
     assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert manifest["quality_report"]["sha256"] == _sha256(quality_report_path)
+    assert (
+        manifest["quality_report"]["size_bytes"]
+        == quality_report_path.stat().st_size
+    )
     assert [record["source_id"] for record in manifest["input_sources"]] == [
         "fred.vixcls",
         "shiller.cape_monthly",
@@ -1863,6 +1875,65 @@ def test_cli_exports_us_equity_public_context_research_csv(
     )
     assert validation_summary["row_count"] == 3
     assert validation_summary["columns"] == tuple(exported.columns)
+    assert validation_summary["quality_report_sha256"] == _sha256(quality_report_path)
+    assert (
+        validation_summary["quality_report_size_bytes"]
+        == quality_report_path.stat().st_size
+    )
+
+
+def test_research_export_validator_rejects_quality_report_drift(
+    tmp_path,
+    capsys,
+) -> None:
+    fred_csv = tmp_path / "fred_vixcls.csv"
+    shiller_csv = tmp_path / "shiller_cape.csv"
+    output_csv = tmp_path / "research" / "us_equity_public_context.csv"
+    manifest_path = tmp_path / "research" / "us_equity_public_context.manifest.json"
+    quality_report_path = (
+        tmp_path / "research" / "us_equity_public_context.quality.json"
+    )
+    pd.DataFrame(
+        {
+            "DATE": ["2025-01-02", "2025-01-03", "2025-01-06"],
+            "VIXCLS": ["20", "25", "30"],
+        }
+    ).to_csv(fred_csv, index=False)
+    pd.DataFrame(
+        {
+            "date": ["2024-12-31", "2025-01-06"],
+            "cape": [30.0, 25.0],
+        }
+    ).to_csv(shiller_csv, index=False)
+
+    result = export_us_equity_public_context_main(
+        [
+            "--fred-vixcls-csv",
+            str(fred_csv),
+            "--shiller-cape-csv",
+            str(shiller_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--quality-report",
+            str(quality_report_path),
+            "--as-of",
+            "2025-01-06",
+        ]
+    )
+
+    assert result == 0
+    capsys.readouterr()
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    quality_report["warning_reasons"] = ["tampered_after_export"]
+    quality_report_path.write_text(
+        json.dumps(quality_report, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SignalBundleValidationError, match="quality_report.sha256"):
+        validate_research_export_manifest(manifest_path)
 
 
 def test_us_equity_context_quality_report_checks_point_in_time_metadata(
