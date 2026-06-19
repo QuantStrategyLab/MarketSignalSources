@@ -71,6 +71,9 @@ from market_signal_sources.cli.export_btc_cycle_research_csv import main as expo
 from market_signal_sources.cli.export_us_equity_context_research_csv import (
     main as export_us_equity_context_main,
 )
+from market_signal_sources.cli.export_us_equity_public_context_research_csv import (
+    main as export_us_equity_public_context_main,
+)
 from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
 from market_signal_sources.cli.list_signal_source_families import (
     main as list_families_main,
@@ -384,19 +387,28 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     )
     record = signal_source_family_record("crypto.btc_cycle_daily")
     us_context_record = signal_source_family_record("us_equity.nasdaq_sp500_context_daily")
+    us_public_context_record = signal_source_family_record(
+        "us_equity.nasdaq_sp500_public_context_daily"
+    )
     catalog = signal_source_family_catalog_payload()
 
     assert known_signal_source_families() == (
         "crypto.btc_cycle_daily",
         "us_equity.nasdaq_sp500_context_daily",
+        "us_equity.nasdaq_sp500_public_context_daily",
     )
     assert catalog["schema_version"] == "market_signal_source_families.v1"
-    assert catalog["families"] == [record, us_context_record]
+    assert catalog["families"] == [
+        record,
+        us_context_record,
+        us_public_context_record,
+    ]
     assert catalog["domain_coverage"]["crypto"]["implemented_families"] == [
         "crypto.btc_cycle_daily"
     ]
     assert catalog["domain_coverage"]["us_equity"]["implemented_families"] == [
-        "us_equity.nasdaq_sp500_context_daily"
+        "us_equity.nasdaq_sp500_context_daily",
+        "us_equity.nasdaq_sp500_public_context_daily",
     ]
     assert "us_equity.index_breadth_daily" in catalog["domain_coverage"][
         "us_equity"
@@ -493,6 +505,21 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert source_profiles_for_signal_source_family(
         "us_equity.nasdaq_sp500_context_daily"
     )[2]["source_id"] == "index_breadth.point_in_time_vendor"
+    public_coverage = signal_source_family_consumer_contract_coverage(
+        "us_equity.nasdaq_sp500_public_context_daily"
+    )
+    assert public_coverage["consumer_count"] == 1
+    assert public_coverage["required_indicator_fields_by_consumer"][
+        "research:nasdaq_sp500_cape_vix_external_context_precomputed"
+    ] == {
+        "US-EQUITY-CONTEXT": [
+            "cape_percentile",
+            "vix_percentile",
+        ]
+    }
+    assert source_profiles_for_signal_source_family(
+        "us_equity.nasdaq_sp500_public_context_daily"
+    )[1]["source_id"] == "shiller.cape_monthly"
     assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
 
 
@@ -531,14 +558,14 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     )
     assert validate_result == 0
     validation_summary = json.loads(capsys.readouterr().out)
-    assert validation_summary["family_count"] == 2
+    assert validation_summary["family_count"] == 3
     assert validation_summary["all_known_families_present"] is True
     assert validation_summary["domain_coverage_present"] is True
     assert validation_summary["domain_count"] == 3
     assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
-    assert validation_summary["implemented_family_count"] == 2
+    assert validation_summary["implemented_family_count"] == 3
     assert validation_summary["planned_family_count"] == 7
-    assert validation_summary["source_profile_count"] == 4
+    assert validation_summary["source_profile_count"] == 6
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
@@ -552,6 +579,12 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
         "fred.vixcls",
         "shiller.cape_monthly",
         "index_breadth.point_in_time_vendor",
+    ]
+    assert validation_summary["source_profile_coverage"][
+        "us_equity.nasdaq_sp500_public_context_daily"
+    ]["source_ids"] == [
+        "fred.vixcls",
+        "shiller.cape_monthly",
     ]
     assert validation_summary["sha256"] == _sha256(catalog_path)
 
@@ -648,10 +681,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
 
     assert summary["path"] == str(output_json)
     assert summary["schema_version"] == "market_signal_source_families.v1"
-    assert summary["family_count"] == 2
+    assert summary["family_count"] == 3
     assert summary["all_consumer_contracts_satisfied"] is True
     assert summary["domain_coverage_present"] is True
-    assert summary["source_profile_count"] == 4
+    assert summary["source_profile_count"] == 6
     assert summary["sha256"] == _sha256(output_json)
 
     validate_summary = validate_signal_source_family_catalog_file(
@@ -681,10 +714,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert manifest_summary["all_known_families_present"] is True
     assert manifest_summary["domain_count"] == 3
     assert manifest_summary["planned_family_count"] == 7
-    assert manifest_summary["source_profile_count"] == 4
+    assert manifest_summary["source_profile_count"] == 6
     assert manifest_summary["all_consumer_contracts_satisfied"] is True
     assert manifest["catalog_path"] == "signal_source_families.json"
-    assert manifest["source_profile_count"] == 4
+    assert manifest["source_profile_count"] == 6
 
     validation_summary = validate_signal_source_family_catalog_manifest(
         manifest_path,
@@ -1177,6 +1210,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
         "research:ibit_btc_ahr999_precomputed",
+        "research:nasdaq_sp500_cape_vix_external_context_precomputed",
         "research:nasdaq_sp500_external_context_precomputed",
         "us_equity:ibit_smart_dca",
     )
@@ -1310,7 +1344,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 6
+    assert validation_summary["consumer_count"] == 7
 
     cli_output_dir = tmp_path / "cli-contracts"
     result = list_contracts_main(
@@ -1361,7 +1395,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 6
+    assert summary["consumer_count"] == 7
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
@@ -1429,8 +1463,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert summary["source_families"] == [
         "crypto.btc_cycle_daily",
         "us_equity.nasdaq_sp500_context_daily",
+        "us_equity.nasdaq_sp500_public_context_daily",
     ]
-    assert summary["consumer_contract_count"] == 6
+    assert summary["consumer_contract_count"] == 7
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
     assert summary["signal_bundle_manifest_sha256"] == _sha256(
@@ -1723,6 +1758,89 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
         expected_transform="us_equity.nasdaq_sp500.context.v1",
     )
     assert validation_summary["row_count"] == 4
+    assert validation_summary["columns"] == tuple(exported.columns)
+
+
+def test_cli_exports_us_equity_public_context_research_csv(
+    tmp_path,
+    capsys,
+) -> None:
+    fred_csv = tmp_path / "fred_vixcls.csv"
+    shiller_csv = tmp_path / "shiller_cape.csv"
+    output_csv = tmp_path / "research" / "us_equity_public_context.csv"
+    manifest_path = tmp_path / "research" / "us_equity_public_context.manifest.json"
+    pd.DataFrame(
+        {
+            "DATE": [
+                "2025-01-02",
+                "2025-01-03",
+                "2025-01-06",
+                "2025-01-07",
+                "2025-01-08",
+            ],
+            "VIXCLS": ["20", ".", "10", "30", "25"],
+        }
+    ).to_csv(fred_csv, index=False)
+    pd.DataFrame(
+        {
+            "date": ["2024-12-31", "2025-01-06", "2025-02-01"],
+            "cape": [30.0, 25.0, 40.0],
+        }
+    ).to_csv(shiller_csv, index=False)
+
+    result = export_us_equity_public_context_main(
+        [
+            "--fred-vixcls-csv",
+            str(fred_csv),
+            "--shiller-cape-csv",
+            str(shiller_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-01-07",
+            "--pretty",
+        ]
+    )
+
+    assert result == 0
+    summary = json.loads(capsys.readouterr().out)
+    exported = pd.read_csv(output_csv)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert summary["artifact_type"] == "us_equity_context_research_csv"
+    assert summary["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert summary["row_count"] == 3
+    assert list(exported.columns) == [
+        "date",
+        "cape_percentile",
+        "vix_percentile",
+        "provider_timestamp",
+    ]
+    assert exported["date"].tolist() == [
+        "2025-01-02",
+        "2025-01-06",
+        "2025-01-07",
+    ]
+    assert exported["cape_percentile"].round(4).tolist() == [1.0, 0.5, 0.5]
+    assert exported["vix_percentile"].round(4).tolist() == [1.0, 0.5, 1.0]
+    assert manifest["artifact_type"] == "us_equity_context_research_csv"
+    assert manifest["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert manifest["input_csv"]["sha256"] == _sha256(fred_csv)
+    assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert [record["source_id"] for record in manifest["input_sources"]] == [
+        "fred.vixcls",
+        "shiller.cape_monthly",
+    ]
+    assert manifest["input_sources"][1]["sha256"] == _sha256(shiller_csv)
+    assert manifest["transform_parameters"]["cape_alignment"] == "asof_backward"
+
+    validation_summary = validate_research_export_manifest(
+        manifest_path,
+        expected_artifact_type="us_equity_context_research_csv",
+        expected_transform="us_equity.nasdaq_sp500.context.v1",
+    )
+    assert validation_summary["row_count"] == 3
     assert validation_summary["columns"] == tuple(exported.columns)
 
 

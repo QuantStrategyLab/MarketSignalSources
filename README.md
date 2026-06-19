@@ -174,15 +174,18 @@ US equity, and Hong Kong equity source families. `domain_coverage` separates
 implemented families from planned families, so platform CI can inspect the
 cross-market direction without treating planned items as runtime-compatible
 source families.
-The currently implemented US equity research family is
-`us_equity.nasdaq_sp500_context_daily`, which publishes
-`US-EQUITY-CONTEXT` fields for `cape_percentile`, `vix_percentile`, and
-`breadth_above_sma200_pct`. It is compatible with the research consumer
-`research:nasdaq_sp500_external_context_precomputed`; it is not a runtime
-strategy default. Its catalog record also includes source profiles for FRED
-`VIXCLS`, Shiller CAPE snapshots, and point-in-time index breadth history. The
-breadth profile explicitly rejects current-constituent backfills because they
-create survivorship bias.
+The currently implemented US equity research families are
+`us_equity.nasdaq_sp500_context_daily`, which publishes `US-EQUITY-CONTEXT`
+fields for `cape_percentile`, `vix_percentile`, and
+`breadth_above_sma200_pct`, and
+`us_equity.nasdaq_sp500_public_context_daily`, which publishes only
+`cape_percentile` and `vix_percentile` for public-data-only experiments. They
+are compatible with `research:nasdaq_sp500_external_context_precomputed` and
+`research:nasdaq_sp500_cape_vix_external_context_precomputed`, respectively;
+neither is a runtime strategy default. Their catalog records include source
+profiles for FRED `VIXCLS` and Shiller CAPE snapshots; the full context family
+also requires point-in-time index breadth history. The breadth profile explicitly
+rejects current-constituent backfills because they create survivorship bias.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
@@ -310,6 +313,27 @@ universe metadata such as `breadth_universe_snapshot_id` and
 `breadth_universe_as_of`. Without `--require-point-in-time-metadata`, missing
 provider or breadth metadata is a warning; with it, those missing point-in-time
 proof fields fail the export before strategy research can rank candidates.
+
+For a public-data-only CAPE/VIX research input, use the local FRED VIXCLS and
+Shiller CAPE snapshots without pretending breadth exists:
+
+```bash
+python -m market_signal_sources.cli.export_us_equity_public_context_research_csv \
+  --fred-vixcls-csv ./VIXCLS.csv \
+  --shiller-cape-csv ./shiller_cape.csv \
+  --output-csv ./data/output/research/us_equity_public_context.csv \
+  --manifest-path ./data/output/research/us_equity_public_context.manifest.json \
+  --as-of 2026-06-19 \
+  --pretty
+```
+
+This public export computes point-in-time expanding percentiles for VIX and CAPE,
+aligns the low-frequency CAPE percentile to VIX dates with backward as-of logic,
+and writes the same `artifact_type=us_equity_context_research_csv` /
+`transform=us_equity.nasdaq_sp500.context.v1` manifest shape. Its output only
+satisfies `research:nasdaq_sp500_cape_vix_external_context_precomputed`; it does
+not satisfy the full `research:nasdaq_sp500_external_context_precomputed`
+consumer because that consumer also requires `breadth_above_sma200_pct`.
 
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match

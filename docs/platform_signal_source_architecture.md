@@ -174,6 +174,15 @@ same `derived_indicators` envelope as BTC cycle signals, with the stable symbol
 `research:nasdaq_sp500_external_context_precomputed`, so it supports offline
 Nasdaq/S&P smart-DCA research before any runtime profile depends on it.
 
+There is also a narrower research family,
+`us_equity.nasdaq_sp500_public_context_daily`, for CAPE/VIX-only experiments
+when point-in-time breadth is not available. It uses the same
+`artifact_type=us_equity_context_research_csv` and
+`transform=us_equity.nasdaq_sp500.context.v1` manifest shape, but its compatible
+consumer is `research:nasdaq_sp500_cape_vix_external_context_precomputed`.
+That consumer intentionally does not satisfy the full-context consumer because
+it lacks `breadth_above_sma200_pct`.
+
 That family also carries source-profile metadata:
 
 - `fred.vixcls` produces `vix_percentile` from FRED `VIXCLS`; research should pin
@@ -186,6 +195,12 @@ That family also carries source-profile metadata:
   Current-constituent backfills are not accepted because they introduce
   survivorship bias; use point-in-time constituents or an auditable historical
   breadth index.
+
+The public-context exporter reads only local FRED and Shiller CSV snapshots. It
+does not fetch network data or parse broker/platform state. It computes
+expanding point-in-time percentiles per source first, then aligns CAPE to VIX
+dates with backward as-of logic so monthly CAPE values are not repeatedly counted
+when calculating their own percentile.
 
 The US equity context availability report records missing provider timestamps,
 provider timestamps after `as_of`, missing breadth universe snapshot ids, and

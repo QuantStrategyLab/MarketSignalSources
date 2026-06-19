@@ -20,6 +20,10 @@ NASDAQ_SP500_CONTEXT_FIELDS: tuple[str, ...] = (
     "vix_percentile",
     "breadth_above_sma200_pct",
 )
+NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS: tuple[str, ...] = (
+    "cape_percentile",
+    "vix_percentile",
+)
 
 
 def build_nasdaq_sp500_context_frame(
@@ -93,6 +97,80 @@ def build_nasdaq_sp500_context_frame(
         "provider_timestamp",
     ]
     output = normalized.loc[:, leading_columns].copy()
+    output["date"] = output["date"].dt.date.astype(str)
+    return output.reset_index(drop=True)
+
+
+def build_nasdaq_sp500_public_context_frame(
+    *,
+    fred_vixcls_frame: pd.DataFrame,
+    shiller_cape_frame: pd.DataFrame,
+    as_of: str | None = None,
+    fred_date_column: str = "DATE",
+    fred_vix_column: str = "VIXCLS",
+    shiller_date_column: str = "date",
+    shiller_cape_column: str = "cape",
+    provider_timestamp: str | None = None,
+    min_history: int = 1,
+) -> pd.DataFrame:
+    """Build CAPE/VIX-only public context from local source snapshots.
+
+    Percentiles are expanding, point-in-time ranks: each observation is ranked
+    only against values available up to that observation date.
+    """
+
+    vix = _source_metric_frame(
+        fred_vixcls_frame,
+        date_column=fred_date_column,
+        value_column=fred_vix_column,
+        output_column="vix",
+        source_name="FRED VIXCLS",
+    )
+    cape = _source_metric_frame(
+        shiller_cape_frame,
+        date_column=shiller_date_column,
+        value_column=shiller_cape_column,
+        output_column="cape",
+        source_name="Shiller CAPE",
+    )
+    if as_of:
+        cutoff = pd.Timestamp(as_of).normalize()
+        vix = vix.loc[vix["date"] <= cutoff]
+        cape = cape.loc[cape["date"] <= cutoff]
+    if vix.empty:
+        raise ValueError("insufficient FRED VIXCLS history: 0 rows")
+    if cape.empty:
+        raise ValueError("insufficient Shiller CAPE history: 0 rows")
+
+    vix["vix_percentile"] = _expanding_rank_percentile(vix["vix"])
+    cape["cape_percentile"] = _expanding_rank_percentile(cape["cape"])
+    merged = pd.merge_asof(
+        vix.loc[:, ["date", "vix_percentile"]],
+        cape.loc[:, ["date", "cape_percentile"]],
+        on="date",
+        direction="backward",
+    ).dropna(subset=NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS)
+    if len(merged) < int(min_history):
+        raise ValueError(
+            "insufficient public US equity context history: "
+            f"{len(merged)} rows < {int(min_history)}"
+        )
+
+    output = merged.loc[
+        merged["cape_percentile"].between(0.0, 1.0)
+        & merged["vix_percentile"].between(0.0, 1.0),
+        ["date", *NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS],
+    ].copy()
+    if len(output) < int(min_history):
+        raise ValueError(
+            "insufficient public US equity context history after validation: "
+            f"{len(output)} rows < {int(min_history)}"
+        )
+    if provider_timestamp:
+        timestamp = pd.Timestamp(provider_timestamp).strftime("%Y-%m-%dT%H:%M:%SZ")
+        output["provider_timestamp"] = timestamp
+    else:
+        output["provider_timestamp"] = output["date"].dt.strftime("%Y-%m-%dT00:00:00Z")
     output["date"] = output["date"].dt.date.astype(str)
     return output.reset_index(drop=True)
 
@@ -606,6 +684,38 @@ def _gap_count_above_threshold(dates: pd.Series, threshold_days: int) -> int:
         return 0
     gaps = normalized.diff().dropna().dt.days
     return int((gaps > int(threshold_days)).sum())
+
+
+def _source_metric_frame(
+    frame: pd.DataFrame,
+    *,
+    date_column: str,
+    value_column: str,
+    output_column: str,
+    source_name: str,
+) -> pd.DataFrame:
+    if date_column not in frame.columns:
+        raise ValueError(f"{source_name} CSV missing date column: {date_column}")
+    if value_column not in frame.columns:
+        raise ValueError(f"{source_name} CSV missing value column: {value_column}")
+    output = pd.DataFrame(
+        {
+            "date": pd.to_datetime(frame[date_column], errors="coerce").dt.normalize(),
+            output_column: pd.to_numeric(frame[value_column], errors="coerce"),
+        }
+    ).dropna(subset=("date", output_column))
+    return (
+        output.sort_values("date")
+        .drop_duplicates(subset=("date",), keep="last")
+        .reset_index(drop=True)
+    )
+
+
+def _expanding_rank_percentile(values: pd.Series) -> pd.Series:
+    return values.expanding(min_periods=1).apply(
+        lambda window: float((window <= window.iloc[-1]).mean()),
+        raw=False,
+    )
 
 
 def _sha256_file(path: Path) -> str:

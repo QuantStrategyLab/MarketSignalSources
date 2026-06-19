@@ -128,6 +128,18 @@ US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES: tuple[dict[str, object], ...] = 
 US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "research:nasdaq_sp500_external_context_precomputed",
 )
+US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS: tuple[str, ...] = (
+    "cape_percentile",
+    "provider_timestamp",
+    "vix_percentile",
+)
+US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_SOURCE_PROFILES: tuple[
+    dict[str, object],
+    ...,
+] = US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES[:2]
+US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES: tuple[str, ...] = (
+    "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+)
 
 SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
     "crypto": {
@@ -149,7 +161,10 @@ SIGNAL_SOURCE_DOMAIN_COVERAGE: dict[str, dict[str, object]] = {
         ),
     },
     "us_equity": {
-        "implemented_families": ("us_equity.nasdaq_sp500_context_daily",),
+        "implemented_families": (
+            "us_equity.nasdaq_sp500_context_daily",
+            "us_equity.nasdaq_sp500_public_context_daily",
+        ),
         "planned_families": (
             "us_equity.index_breadth_daily",
             "us_equity.valuation_macro_context",
@@ -214,6 +229,23 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "compatible_profiles": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
         "runtime_consumers": (),
         "research_consumers": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
+    },
+    "us_equity.nasdaq_sp500_public_context_daily": {
+        "family": "us_equity.nasdaq_sp500_public_context_daily",
+        "domain": "us_equity",
+        "bundle_type": "derived_indicators",
+        "bundle_id_prefix": "us_equity.nasdaq_sp500.public_context",
+        "canonical_input": "derived_indicators",
+        "transform": "us_equity.nasdaq_sp500.context.v1",
+        "provider_dataset": "nasdaq_sp500_public_context_daily",
+        "freshness_policy": "us_equity_research_context_t_plus_1",
+        "minimum_history_rows": 1,
+        "symbols": (US_EQUITY_CONTEXT_SYMBOL,),
+        "derived_indicator_fields": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_FIELDS,
+        "source_profiles": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_SOURCE_PROFILES,
+        "compatible_profiles": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES,
+        "runtime_consumers": (),
+        "research_consumers": US_EQUITY_NASDAQ_SP500_PUBLIC_CONTEXT_COMPATIBLE_PROFILES,
     },
 }
 
