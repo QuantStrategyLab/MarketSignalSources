@@ -93,6 +93,9 @@ downstream field coverage before publishing. For
 `research:ibit_btc_ahr999_mayer_precomputed_variants`, the bundle's
 `consumer_contract.compatible_profiles` must include that consumer and the
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
+The production `us_equity:ibit_smart_dca` consumer currently requires only
+`ahr999`; `research:ibit_btc_ahr999_precomputed` mirrors that AHR999-only
+profile for offline candidate comparisons.
 Plain manifest/index audit summaries also include `compatible_profiles`, so CI
 logs can show the allowed consumer set without printing signal values.
 Base bundle validation rejects missing, empty, or malformed `compatible_profiles`

@@ -673,6 +673,10 @@ def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_pa
         bundle,
         consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
     )
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="research:ibit_btc_ahr999_precomputed",
+    )
     manifest_summary = validate_signal_bundle_manifest_for_consumer(
         paths["manifest"],
         consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
@@ -682,6 +686,9 @@ def test_signal_bundle_consumer_contract_can_validate_manifest_and_bundle(tmp_pa
         consumer="research:ibit_btc_ahr999_mayer_precomputed_variants",
     )
 
+    assert required_indicator_fields_for_consumer(
+        "research:ibit_btc_ahr999_precomputed"
+    ) == {"BTC-USD": ("ahr999",)}
     assert required_indicator_fields_for_consumer(
         "research:ibit_btc_ahr999_mayer_precomputed_variants"
     ) == {"BTC-USD": ("ahr999", "ahr999_sma", "mayer_multiple")}
@@ -701,6 +708,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
     assert known_signal_consumers() == (
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
+        "research:ibit_btc_ahr999_precomputed",
         "us_equity:ibit_smart_dca",
     )
     assert payload == {
@@ -732,7 +740,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
             "consumer": "us_equity:ibit_smart_dca",
             "canonical_input": "derived_indicators",
             "required_indicator_fields_by_symbol": {
-                "BTC-USD": ["ahr999", "mayer_multiple"],
+                "BTC-USD": ["ahr999"],
             },
         }
     ]
@@ -833,7 +841,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 3
+    assert validation_summary["consumer_count"] == 4
 
     cli_output_dir = tmp_path / "cli-contracts"
     result = list_contracts_main(
@@ -884,7 +892,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 3
+    assert summary["consumer_count"] == 4
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:

@@ -87,6 +87,9 @@ credential paths, or service lifecycle ownership.
 6. Validate the manifest or index with the target consumer identifier. This
    checks both `consumer_contract.compatible_profiles` membership and required
    indicator field coverage.
+   `us_equity:ibit_smart_dca` currently requires only `ahr999`; Mayer/SMA fields
+   remain available through research consumers such as
+   `research:ibit_btc_ahr999_mayer_precomputed_variants`.
    The manifest and index also carry `compatible_profiles`, and validation
    rejects profile drift across index, manifest, and bundle.
 7. Publish the consumer contract registry with its manifest.

@@ -17,7 +17,10 @@ MARKET_SIGNAL_CONSUMER_CONTRACT_MANIFEST_SCHEMA_VERSION = (
 
 CONSUMER_REQUIRED_INDICATOR_FIELDS: dict[str, dict[str, tuple[str, ...]]] = {
     "us_equity:ibit_smart_dca": {
-        "BTC-USD": ("ahr999", "mayer_multiple"),
+        "BTC-USD": ("ahr999",),
+    },
+    "research:ibit_btc_ahr999_precomputed": {
+        "BTC-USD": ("ahr999",),
     },
     "research:ibit_btc_ahr999_mayer_precomputed": {
         "BTC-USD": ("ahr999", "mayer_multiple"),
