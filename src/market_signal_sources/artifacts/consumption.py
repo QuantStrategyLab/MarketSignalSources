@@ -7,6 +7,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
+from .consumer_contracts import known_signal_consumers
 from .platform_handoff import (
     validate_platform_signal_handoff_index,
     validate_platform_signal_handoff_manifest,
@@ -25,6 +26,9 @@ MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION = (
 MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SCHEMA_VERSION = (
     "market_signal_runtime_adapter_config.v1"
 )
+MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SET_SCHEMA_VERSION = (
+    "market_signal_runtime_adapter_config_set.v1"
+)
 MARKET_SIGNAL_RUNTIME_ADAPTER_DEPLOYMENT_SCHEMA_VERSION = (
     "market_signal_runtime_adapter_deployment.v1"
 )
@@ -33,6 +37,9 @@ _INJECTION_PLAN_ARTIFACT_TYPE = "market_signal_runtime_injection_plan"
 _PLAN_AUDIT_MATCH_ARTIFACT_TYPE = "market_signal_runtime_plan_audit_match"
 _ADAPTER_CONFIG_VALIDATION_ARTIFACT_TYPE = (
     "market_signal_runtime_adapter_config_validation"
+)
+_ADAPTER_CONFIG_SET_VALIDATION_ARTIFACT_TYPE = (
+    "market_signal_runtime_adapter_config_set_validation"
 )
 _ADAPTER_DEPLOYMENT_VALIDATION_ARTIFACT_TYPE = (
     "market_signal_runtime_adapter_deployment_validation"
@@ -250,6 +257,52 @@ def validate_runtime_adapter_config_file(
         "path": str(config_path),
         "sha256": _sha256_file(config_path),
         "size_bytes": config_path.stat().st_size,
+    }
+
+
+def validate_runtime_adapter_config_set_files(
+    paths: Iterable[str | PathLike[str]],
+    *,
+    require_all_known_runtime_consumers: bool = False,
+) -> dict[str, Any]:
+    """Validate a platform runtime adapter config set and consumer coverage."""
+
+    config_paths = tuple(Path(path) for path in paths)
+    if not config_paths:
+        raise ValueError("runtime adapter config set requires at least one config")
+    summaries = tuple(
+        validate_runtime_adapter_config_file(config_path)
+        for config_path in config_paths
+    )
+    consumers = tuple(str(summary["consumer"]) for summary in summaries)
+    duplicates = sorted(
+        consumer for consumer in set(consumers) if consumers.count(consumer) > 1
+    )
+    if duplicates:
+        raise ValueError(
+            "runtime adapter config set duplicate consumers: "
+            + ", ".join(duplicates)
+        )
+    known_runtime_consumers = _known_runtime_signal_consumers()
+    missing_known_runtime_consumers = sorted(
+        set(known_runtime_consumers) - set(consumers)
+    )
+    if require_all_known_runtime_consumers and missing_known_runtime_consumers:
+        raise ValueError(
+            "runtime adapter config set missing known runtime consumers: "
+            + ", ".join(missing_known_runtime_consumers)
+        )
+    return {
+        "schema_version": MARKET_SIGNAL_RUNTIME_ADAPTER_CONFIG_SET_SCHEMA_VERSION,
+        "artifact_type": _ADAPTER_CONFIG_SET_VALIDATION_ARTIFACT_TYPE,
+        "valid": True,
+        "config_count": len(summaries),
+        "consumers": consumers,
+        "known_runtime_consumer_count": len(known_runtime_consumers),
+        "known_runtime_consumers": known_runtime_consumers,
+        "missing_known_runtime_consumers": tuple(missing_known_runtime_consumers),
+        "all_known_runtime_consumers_present": not missing_known_runtime_consumers,
+        "configs": summaries,
     }
 
 
@@ -669,6 +722,14 @@ def _config_relative_path(config_path: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return config_path.parent / path
+
+
+def _known_runtime_signal_consumers() -> tuple[str, ...]:
+    return tuple(
+        consumer
+        for consumer in known_signal_consumers()
+        if not consumer.startswith("research:")
+    )
 
 
 def _audit_handoff_path(

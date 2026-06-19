@@ -10,6 +10,7 @@ from market_signal_sources.artifacts.consumption import (
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_adapter_config_file,
+    validate_runtime_adapter_config_set_files,
     validate_runtime_adapter_deployment_config_file,
     validate_runtime_signal_injection_plan_file,
     validate_runtime_signal_injection_plan_matches_audit,
@@ -26,6 +27,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         validation_modes = (
             args.validate_json,
             args.validate_runtime_adapter_config_json,
+            args.validate_runtime_adapter_config_set_json,
             args.validate_runtime_adapter_deployment_json,
             args.validate_runtime_plan_json,
             args.validate_runtime_plan_with_audit,
@@ -35,6 +37,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ValueError(
                     "provide only one validation mode"
                 )
+            validating_config_set = (
+                args.validate_runtime_adapter_config_set_json is not None
+            )
             if (
                 args.consumer
                 or args.platform_handoff_manifest
@@ -45,12 +50,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 or args.output_runtime_plan_json
                 or args.runtime_injection_plan
                 or args.require_all_known_families
-                or args.require_all_known_consumers
+                or (args.require_all_known_consumers and not validating_config_set)
             ):
                 raise ValueError(
                     "provide validation without consumer, handoff, output, "
                     "runtime-plan, or require-all options"
-            )
+                )
             if args.validate_json is not None:
                 if args.audit_json is not None:
                     raise ValueError(
@@ -64,6 +69,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 payload = validate_runtime_adapter_config_file(
                     args.validate_runtime_adapter_config_json
+                )
+            elif args.validate_runtime_adapter_config_set_json is not None:
+                if args.audit_json is not None:
+                    raise ValueError(
+                        "--audit-json requires --validate-runtime-plan-with-audit"
+                    )
+                payload = validate_runtime_adapter_config_set_files(
+                    args.validate_runtime_adapter_config_set_json,
+                    require_all_known_runtime_consumers=(
+                        args.require_all_known_consumers
+                    ),
                 )
             elif args.validate_runtime_adapter_deployment_json is not None:
                 if args.audit_json is not None:
@@ -156,6 +172,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--validate-runtime-adapter-config-json",
         help="Validate a saved market_signal_runtime_adapter_config.v1 JSON file.",
+    )
+    parser.add_argument(
+        "--validate-runtime-adapter-config-set-json",
+        nargs="+",
+        help=(
+            "Validate one or more runtime adapter config files as a deployment "
+            "configuration set."
+        ),
     )
     parser.add_argument(
         "--validate-runtime-adapter-deployment-json",

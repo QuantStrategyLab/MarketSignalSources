@@ -51,6 +51,7 @@ from market_signal_sources.artifacts.consumption import (
     runtime_signal_injection_plan,
     validate_consumption_audit_file,
     validate_runtime_adapter_config,
+    validate_runtime_adapter_config_set_files,
     validate_runtime_adapter_deployment_config_file,
     validate_runtime_signal_injection_plan_file,
     validate_runtime_signal_injection_plan_matches_audit,
@@ -1988,6 +1989,49 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_adapter_config["sha256"] == _sha256(
         runtime_adapter_config_path
     )
+    config_set_summary = validate_runtime_adapter_config_set_files(
+        [runtime_adapter_config_path],
+        require_all_known_runtime_consumers=True,
+    )
+    assert config_set_summary["schema_version"] == (
+        "market_signal_runtime_adapter_config_set.v1"
+    )
+    assert config_set_summary["consumers"] == ("us_equity:ibit_smart_dca",)
+    assert config_set_summary["all_known_runtime_consumers_present"] is True
+    validate_runtime_adapter_config_set_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-config-set-json",
+            str(runtime_adapter_config_path),
+            "--require-all-known-consumers",
+            "--pretty",
+        ]
+    )
+    assert validate_runtime_adapter_config_set_result == 0
+    cli_validate_adapter_config_set = json.loads(capsys.readouterr().out)
+    assert cli_validate_adapter_config_set["artifact_type"] == (
+        "market_signal_runtime_adapter_config_set_validation"
+    )
+    assert cli_validate_adapter_config_set["all_known_runtime_consumers_present"] is True
+    duplicate_runtime_adapter_config_path = (
+        tmp_path / "duplicate_runtime_adapter_config.json"
+    )
+    duplicate_runtime_adapter_config_path.write_text(
+        json.dumps(runtime_adapter_config, sort_keys=True),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate consumers"):
+        validate_runtime_adapter_config_set_files(
+            [runtime_adapter_config_path, duplicate_runtime_adapter_config_path]
+        )
+    duplicate_config_set_result = audit_consumption_main(
+        [
+            "--validate-runtime-adapter-config-set-json",
+            str(runtime_adapter_config_path),
+            str(duplicate_runtime_adapter_config_path),
+        ]
+    )
+    assert duplicate_config_set_result == 2
+    assert "duplicate consumers" in capsys.readouterr().err
     deployment_summary = validate_runtime_adapter_deployment_config_file(
         runtime_adapter_config_path
     )
