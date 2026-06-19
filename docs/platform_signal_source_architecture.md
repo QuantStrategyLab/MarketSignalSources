@@ -159,6 +159,13 @@ publish. Planned entries in `domain_coverage` are intentionally not included in
 `--require-all-known-families`; they become runtime-compatible only after a real
 family record, consumer contract, artifact writer, and validation test exist.
 
+The first US equity family is `us_equity.nasdaq_sp500_context_daily`. It uses the
+same `derived_indicators` envelope as BTC cycle signals, with the stable symbol
+`US-EQUITY-CONTEXT` and fields such as `cape_percentile`, `vix_percentile`, and
+`breadth_above_sma200_pct`. Its initial consumer is
+`research:nasdaq_sp500_external_context_precomputed`, so it supports offline
+Nasdaq/S&P smart-DCA research before any runtime profile depends on it.
+
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`
 modules. Do not add a new market-specific envelope builder unless the runtime

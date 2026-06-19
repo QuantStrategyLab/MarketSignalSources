@@ -379,13 +379,20 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         generated_at="2025-09-17T00:15:00Z",
     )
     record = signal_source_family_record("crypto.btc_cycle_daily")
+    us_context_record = signal_source_family_record("us_equity.nasdaq_sp500_context_daily")
     catalog = signal_source_family_catalog_payload()
 
-    assert known_signal_source_families() == ("crypto.btc_cycle_daily",)
+    assert known_signal_source_families() == (
+        "crypto.btc_cycle_daily",
+        "us_equity.nasdaq_sp500_context_daily",
+    )
     assert catalog["schema_version"] == "market_signal_source_families.v1"
-    assert catalog["families"] == [record]
+    assert catalog["families"] == [record, us_context_record]
     assert catalog["domain_coverage"]["crypto"]["implemented_families"] == [
         "crypto.btc_cycle_daily"
+    ]
+    assert catalog["domain_coverage"]["us_equity"]["implemented_families"] == [
+        "us_equity.nasdaq_sp500_context_daily"
     ]
     assert "us_equity.index_breadth_daily" in catalog["domain_coverage"][
         "us_equity"
@@ -417,6 +424,19 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
     assert set(record["derived_indicator_fields"]) == set(
         bundle["derived_indicators"]["BTC-USD"]
     )
+    us_coverage = signal_source_family_consumer_contract_coverage(
+        "us_equity.nasdaq_sp500_context_daily"
+    )
+    assert us_coverage["consumer_count"] == 1
+    assert us_coverage["required_indicator_fields_by_consumer"][
+        "research:nasdaq_sp500_external_context_precomputed"
+    ] == {
+        "US-EQUITY-CONTEXT": [
+            "breadth_above_sma200_pct",
+            "cape_percentile",
+            "vix_percentile",
+        ]
+    }
     assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
 
 
@@ -454,17 +474,20 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     )
     assert validate_result == 0
     validation_summary = json.loads(capsys.readouterr().out)
-    assert validation_summary["family_count"] == 1
+    assert validation_summary["family_count"] == 2
     assert validation_summary["all_known_families_present"] is True
     assert validation_summary["domain_coverage_present"] is True
     assert validation_summary["domain_count"] == 3
     assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
-    assert validation_summary["implemented_family_count"] == 1
+    assert validation_summary["implemented_family_count"] == 2
     assert validation_summary["planned_family_count"] == 7
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
     ]["consumer_count"] == 4
+    assert validation_summary["consumer_contract_coverage"][
+        "us_equity.nasdaq_sp500_context_daily"
+    ]["consumer_count"] == 1
     assert validation_summary["sha256"] == _sha256(catalog_path)
 
     legacy_payload = signal_source_family_catalog_payload()
@@ -525,14 +548,11 @@ def test_signal_source_family_catalog_can_publish_manifest(
 ) -> None:
     output_json = tmp_path / "catalog" / "signal_source_families.json"
 
-    summary = write_signal_source_family_catalog(
-        output_json,
-        families=("crypto.btc_cycle_daily",),
-    )
+    summary = write_signal_source_family_catalog(output_json)
 
     assert summary["path"] == str(output_json)
     assert summary["schema_version"] == "market_signal_source_families.v1"
-    assert summary["family_count"] == 1
+    assert summary["family_count"] == 2
     assert summary["all_consumer_contracts_satisfied"] is True
     assert summary["domain_coverage_present"] is True
     assert summary["sha256"] == _sha256(output_json)
@@ -842,6 +862,64 @@ def test_generic_derived_indicator_bundle_can_publish_non_btc_signal(tmp_path) -
     }
 
 
+def test_us_equity_context_bundle_covers_nasdaq_external_research_consumer(
+    tmp_path,
+) -> None:
+    bundle = build_derived_indicator_signal_bundle(
+        domain="us_equity",
+        bundle_id="us_equity.nasdaq_sp500.context.2025-09-17",
+        as_of="2025-09-17",
+        generated_at="2025-09-17T00:15:00Z",
+        symbols=("US-EQUITY-CONTEXT",),
+        derived_indicators={
+            "US-EQUITY-CONTEXT": {
+                "breadth_above_sma200_pct": 0.35,
+                "cape_percentile": 0.90,
+                "provider_timestamp": "2025-09-17T00:00:00Z",
+                "vix_percentile": 0.85,
+            }
+        },
+        freshness={
+            "policy": "us_equity_research_context_t_plus_1",
+            "max_age_hours": 36,
+            "provider_timestamp": "2025-09-17T00:00:00Z",
+            "status": "fresh",
+        },
+        provenance={
+            "source_repo": "QuantStrategyLab/MarketSignalSources",
+            "source_version": "0.1.0",
+            "code_commit": "0000000000000000000000000000000000000000",
+            "provider": "local_csv",
+            "provider_dataset": "nasdaq_sp500_external_context_daily",
+            "raw_artifact_sha256": "2" * 64,
+            "transform": "us_equity.nasdaq_sp500.context.v1",
+            "license_scope": "internal_research",
+            "generated_by": "market_signal_sources.local_csv",
+        },
+        compatible_profiles=("research:nasdaq_sp500_external_context_precomputed",),
+        min_strategy_contract="derived_indicators+research_context",
+    )
+
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+    validate_signal_bundle_for_consumer(
+        bundle,
+        consumer="research:nasdaq_sp500_external_context_precomputed",
+    )
+    manifest_summary = validate_signal_bundle_manifest_for_consumer(
+        paths["manifest"],
+        consumer="research:nasdaq_sp500_external_context_precomputed",
+    )
+
+    assert manifest_summary["bundle_id"] == "us_equity.nasdaq_sp500.context.2025-09-17"
+    assert manifest_summary["required_indicator_fields_by_symbol"] == {
+        "US-EQUITY-CONTEXT": (
+            "breadth_above_sma200_pct",
+            "cape_percentile",
+            "vix_percentile",
+        )
+    }
+
+
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     input_csv = tmp_path / "btc.csv"
     publication_root = tmp_path / "signal_bundles"
@@ -999,6 +1077,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
         "research:ibit_btc_ahr999_precomputed",
+        "research:nasdaq_sp500_external_context_precomputed",
         "us_equity:ibit_smart_dca",
     )
     assert payload == {
@@ -1131,7 +1210,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 4
+    assert validation_summary["consumer_count"] == 5
 
     cli_output_dir = tmp_path / "cli-contracts"
     result = list_contracts_main(
@@ -1182,7 +1261,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 4
+    assert summary["consumer_count"] == 5
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
@@ -1247,8 +1326,11 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert summary["consumer"] == "us_equity:ibit_smart_dca"
     assert summary["canonical_input"] == "derived_indicators"
     assert summary["bundle_id"] == "crypto.btc.derived_indicators.2025-09-17"
-    assert summary["source_families"] == ["crypto.btc_cycle_daily"]
-    assert summary["consumer_contract_count"] == 4
+    assert summary["source_families"] == [
+        "crypto.btc_cycle_daily",
+        "us_equity.nasdaq_sp500_context_daily",
+    ]
+    assert summary["consumer_contract_count"] == 5
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
     assert summary["signal_bundle_manifest_sha256"] == _sha256(

@@ -170,6 +170,12 @@ US equity, and Hong Kong equity source families. `domain_coverage` separates
 implemented families from planned families, so platform CI can inspect the
 cross-market direction without treating planned items as runtime-compatible
 source families.
+The currently implemented US equity research family is
+`us_equity.nasdaq_sp500_context_daily`, which publishes
+`US-EQUITY-CONTEXT` fields for `cape_percentile`, `vix_percentile`, and
+`breadth_above_sma200_pct`. It is compatible with the research consumer
+`research:nasdaq_sp500_external_context_precomputed`; it is not a runtime
+strategy default.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
