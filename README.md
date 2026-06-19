@@ -16,6 +16,12 @@ see [Platform Signal Source Architecture](docs/platform_signal_source_architectu
 For the concrete runtime and research handoff consumption contract, see
 [Platform Consumption Contract](docs/platform_consumption_contract.md).
 
+Installed packages expose console-script aliases for platform CI, including
+`build-platform-handoff`, `audit-signal-consumption`,
+`list-signal-source-families`, `list-signal-consumer-contracts`, and
+`validate-quality-report`. The `python -m market_signal_sources.cli...` examples
+below use the same entrypoints.
+
 ## BTC Cycle Bundle
 
 Example:
