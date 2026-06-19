@@ -388,6 +388,8 @@ def build_nasdaq_sp500_public_context_availability_report(
     shiller_cape_column: str = "cape",
     min_history_rows: int = 1,
     max_allowed_gap_days: int = 7,
+    max_fred_vix_lag_days: int = 10,
+    max_shiller_cape_lag_days: int = 120,
 ) -> dict[str, Any]:
     """Build a quality report for local public CAPE/VIX context inputs."""
 
@@ -403,6 +405,7 @@ def build_nasdaq_sp500_public_context_availability_report(
         value_column=fred_vix_column,
         output_column="vix",
         as_of=as_of,
+        max_allowed_lag_days=max_fred_vix_lag_days,
     )
     shiller_audit = _public_context_source_audit(
         shiller_raw,
@@ -412,6 +415,7 @@ def build_nasdaq_sp500_public_context_availability_report(
         value_column=shiller_cape_column,
         output_column="cape",
         as_of=as_of,
+        max_allowed_lag_days=max_shiller_cape_lag_days,
     )
     source_audits = (fred_audit, shiller_audit)
     failure_reasons: list[str] = []
@@ -464,6 +468,8 @@ def build_nasdaq_sp500_public_context_availability_report(
         "as_of": None if as_of is None else pd.Timestamp(as_of).normalize().date().isoformat(),
         "min_history_rows": int(min_history_rows),
         "max_allowed_gap_days": int(max_allowed_gap_days),
+        "max_fred_vix_lag_days": int(max_fred_vix_lag_days),
+        "max_shiller_cape_lag_days": int(max_shiller_cape_lag_days),
         "input_sources": [
             _public_context_source_report(audit)
             for audit in source_audits
@@ -813,6 +819,7 @@ def _public_context_source_audit(
     value_column: str,
     output_column: str,
     as_of: str | None,
+    max_allowed_lag_days: int | None,
 ) -> dict[str, Any]:
     selected_columns = {"date": date_column, "value": value_column}
     missing_columns = [
@@ -842,6 +849,10 @@ def _public_context_source_audit(
             "duplicate_date_count": 0,
             "first_date": "",
             "last_date": "",
+            "latest_observation_lag_days": None,
+            "max_allowed_lag_days": None
+            if max_allowed_lag_days is None
+            else int(max_allowed_lag_days),
             "failure_reasons": tuple(failure_reasons),
             "warning_reasons": (),
             "normalized_frame": empty,
@@ -869,6 +880,17 @@ def _public_context_source_audit(
     )
     if normalized.empty:
         failure_reasons.append(f"{source_id}:insufficient_positive_history")
+    latest_observation_lag_days = None
+    if as_of and not normalized.empty:
+        cutoff = pd.Timestamp(as_of).normalize()
+        latest_observation_lag_days = int(
+            max(0, (cutoff - pd.Timestamp(normalized.iloc[-1]["date"])).days)
+        )
+        if (
+            max_allowed_lag_days is not None
+            and latest_observation_lag_days > int(max_allowed_lag_days)
+        ):
+            failure_reasons.append(f"{source_id}:latest_observation_stale")
     warning_reasons: list[str] = []
     if invalid_date_count:
         warning_reasons.append(f"{source_id}:invalid_dates_dropped")
@@ -896,6 +918,10 @@ def _public_context_source_audit(
         "duplicate_date_count": duplicate_date_count,
         "first_date": "" if normalized.empty else normalized.iloc[0]["date"].date().isoformat(),
         "last_date": "" if normalized.empty else normalized.iloc[-1]["date"].date().isoformat(),
+        "latest_observation_lag_days": latest_observation_lag_days,
+        "max_allowed_lag_days": None
+        if max_allowed_lag_days is None
+        else int(max_allowed_lag_days),
         "failure_reasons": tuple(failure_reasons),
         "warning_reasons": tuple(warning_reasons),
         "normalized_frame": normalized,
@@ -919,6 +945,8 @@ def _public_context_source_report(audit: dict[str, Any]) -> dict[str, Any]:
         "duplicate_date_count": int(audit["duplicate_date_count"]),
         "first_date": str(audit["first_date"]),
         "last_date": str(audit["last_date"]),
+        "latest_observation_lag_days": audit["latest_observation_lag_days"],
+        "max_allowed_lag_days": audit["max_allowed_lag_days"],
         "failure_reasons": list(audit["failure_reasons"]),
         "warning_reasons": list(audit["warning_reasons"]),
     }

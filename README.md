@@ -343,7 +343,11 @@ consumer because that consumer also requires `breadth_above_sma200_pct`.
 The optional public quality report uses
 `us_equity_public_context_availability_report.v1` and audits the FRED/Shiller
 source hashes, missing columns, invalid dates, null or non-positive values,
-duplicates, `as_of` filtering, and date gaps in the merged public context.
+duplicates, `as_of` filtering, source freshness, and date gaps in the merged
+public context. By default FRED VIX must be no more than 10 days stale versus
+`as_of`, and Shiller CAPE must be no more than 120 days stale; stale inputs fail
+the quality report instead of silently extending old low-frequency values into a
+current research run.
 
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match

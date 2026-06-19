@@ -208,7 +208,11 @@ dates with backward as-of logic so monthly CAPE values are not repeatedly counte
 when calculating their own percentile.
 Its `us_equity_public_context_availability_report.v1` quality report audits the
 two public source snapshots and the merged CAPE/VIX output. It deliberately does
-not claim breadth availability or point-in-time constituent coverage.
+not claim breadth availability or point-in-time constituent coverage. The report
+also gates source freshness: by default FRED VIX must be within 10 days of
+`as_of`, while the monthly Shiller CAPE snapshot must be within 120 days. This
+keeps a stale low-frequency valuation file from being backward-filled into a
+current signal without an explicit research override.
 
 The US equity context availability report records missing provider timestamps,
 provider timestamps after `as_of`, missing breadth universe snapshot ids, and

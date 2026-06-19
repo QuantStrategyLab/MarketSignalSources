@@ -1854,6 +1854,7 @@ def test_cli_exports_us_equity_public_context_research_csv(
     ]
     assert manifest["input_sources"][1]["sha256"] == _sha256(shiller_csv)
     assert manifest["transform_parameters"]["cape_alignment"] == "asof_backward"
+    assert manifest["transform_parameters"]["max_shiller_cape_lag_days"] == 120
     assert quality_report["schema_version"] == (
         "us_equity_public_context_availability_report.v1"
     )
@@ -1865,8 +1866,12 @@ def test_cli_exports_us_equity_public_context_research_csv(
     assert quality_report["input_sources"][0]["source_id"] == "fred.vixcls"
     assert quality_report["input_sources"][0]["null_value_count"] == 1
     assert quality_report["input_sources"][0]["filtered_after_as_of_count"] == 1
+    assert quality_report["input_sources"][0]["latest_observation_lag_days"] == 0
+    assert quality_report["input_sources"][0]["max_allowed_lag_days"] == 10
     assert quality_report["input_sources"][1]["source_id"] == "shiller.cape_monthly"
     assert quality_report["input_sources"][1]["filtered_after_as_of_count"] == 1
+    assert quality_report["input_sources"][1]["latest_observation_lag_days"] == 1
+    assert quality_report["input_sources"][1]["max_allowed_lag_days"] == 120
 
     validation_summary = validate_research_export_manifest(
         manifest_path,
@@ -1880,6 +1885,60 @@ def test_cli_exports_us_equity_public_context_research_csv(
         validation_summary["quality_report_size_bytes"]
         == quality_report_path.stat().st_size
     )
+
+
+def test_public_context_quality_report_rejects_stale_cape_source(
+    tmp_path,
+    capsys,
+) -> None:
+    fred_csv = tmp_path / "fred_vixcls.csv"
+    shiller_csv = tmp_path / "shiller_cape.csv"
+    output_csv = tmp_path / "research" / "us_equity_public_context.csv"
+    manifest_path = tmp_path / "research" / "us_equity_public_context.manifest.json"
+    quality_report_path = (
+        tmp_path / "research" / "us_equity_public_context.quality.json"
+    )
+    pd.DataFrame(
+        {
+            "DATE": ["2026-06-17", "2026-06-18", "2026-06-19"],
+            "VIXCLS": [18.44, 18.10, 17.90],
+        }
+    ).to_csv(fred_csv, index=False)
+    pd.DataFrame(
+        {
+            "date": ["2023-08-31", "2023-09-30"],
+            "cape": [30.47, 30.81],
+        }
+    ).to_csv(shiller_csv, index=False)
+
+    result = export_us_equity_public_context_main(
+        [
+            "--fred-vixcls-csv",
+            str(fred_csv),
+            "--shiller-cape-csv",
+            str(shiller_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--quality-report",
+            str(quality_report_path),
+            "--as-of",
+            "2026-06-19",
+        ]
+    )
+
+    assert result == 2
+    assert "shiller.cape_monthly:latest_observation_stale" in capsys.readouterr().err
+    quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    assert quality_report["quality_status"] == "fail"
+    assert "shiller.cape_monthly:latest_observation_stale" in quality_report[
+        "failure_reasons"
+    ]
+    shiller_source = quality_report["input_sources"][1]
+    assert shiller_source["latest_observation_lag_days"] > 120
+    assert shiller_source["max_allowed_lag_days"] == 120
+    assert not output_csv.exists()
 
 
 def test_research_export_validator_rejects_quality_report_drift(

@@ -38,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 shiller_cape_column=args.shiller_cape_column,
                 min_history_rows=args.min_history,
                 max_allowed_gap_days=args.max_allowed_gap_days,
+                max_fred_vix_lag_days=args.max_fred_vix_lag_days,
+                max_shiller_cape_lag_days=args.max_shiller_cape_lag_days,
             )
             if quality_report["quality_status"] == "fail":
                 raise ValueError(
@@ -85,6 +87,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "shiller_cape_column": args.shiller_cape_column,
                 "percentile_method": "expanding_rank_percentile",
                 "cape_alignment": "asof_backward",
+                "max_fred_vix_lag_days": args.max_fred_vix_lag_days,
+                "max_shiller_cape_lag_days": args.max_shiller_cape_lag_days,
             },
             quality_report_path=args.quality_report,
         )
@@ -126,6 +130,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--as-of")
     parser.add_argument("--min-history", type=int, default=1)
     parser.add_argument("--max-allowed-gap-days", type=int, default=7)
+    parser.add_argument("--max-fred-vix-lag-days", type=int, default=10)
+    parser.add_argument("--max-shiller-cape-lag-days", type=int, default=120)
     parser.add_argument("--quality-report", type=Path)
     parser.add_argument("--source-version", default="0.1.0")
     parser.add_argument("--fred-date-column", default="DATE")
