@@ -53,6 +53,10 @@ from market_signal_sources.artifacts.platform_handoff import (
     write_platform_signal_handoff_index,
     write_platform_signal_handoff_manifest,
 )
+from market_signal_sources.artifacts.research_handoff import (
+    validate_research_signal_handoff_manifest,
+    write_research_signal_handoff_manifest,
+)
 from market_signal_sources.artifacts.validation import (
     SignalBundleValidationError,
     required_indicator_fields_for_consumer,
@@ -67,6 +71,9 @@ from market_signal_sources.artifacts.validation import (
 )
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.build_platform_handoff import main as handoff_main
+from market_signal_sources.cli.build_research_handoff import (
+    main as research_handoff_main,
+)
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
 from market_signal_sources.cli.export_us_equity_context_research_csv import (
     main as export_us_equity_context_main,
@@ -1645,6 +1652,151 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             consumer="us_equity:ibit_smart_dca",
             require_all_known_families=True,
             require_all_known_consumers=True,
+        )
+
+
+def test_research_signal_handoff_manifest_pins_research_csv_contracts(
+    tmp_path,
+    capsys,
+) -> None:
+    fred_csv = tmp_path / "inputs" / "fred_vixcls.csv"
+    shiller_csv = tmp_path / "inputs" / "shiller_cape.csv"
+    output_csv = tmp_path / "research" / "us_equity_public_context.csv"
+    research_manifest_path = (
+        tmp_path / "research" / "us_equity_public_context.manifest.json"
+    )
+    quality_report_path = (
+        tmp_path / "research" / "us_equity_public_context.quality.json"
+    )
+    fred_csv.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "DATE": ["2025-01-02", "2025-01-03", "2025-01-06"],
+            "VIXCLS": [20.0, 25.0, 30.0],
+        }
+    ).to_csv(fred_csv, index=False)
+    pd.DataFrame(
+        {
+            "date": ["2024-12-31", "2025-01-06"],
+            "cape": [30.0, 25.0],
+        }
+    ).to_csv(shiller_csv, index=False)
+
+    export_result = export_us_equity_public_context_main(
+        [
+            "--fred-vixcls-csv",
+            str(fred_csv),
+            "--shiller-cape-csv",
+            str(shiller_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(research_manifest_path),
+            "--quality-report",
+            str(quality_report_path),
+            "--as-of",
+            "2025-01-06",
+        ]
+    )
+    assert export_result == 0
+    capsys.readouterr()
+
+    catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "source-catalog",
+        families=("us_equity.nasdaq_sp500_public_context_daily",),
+    )
+    contract_summary = write_consumer_contract_registry_artifacts(
+        tmp_path / "contracts",
+        consumers=("research:nasdaq_sp500_cape_vix_external_context_precomputed",),
+    )
+    handoff_path = tmp_path / "research_handoff.json"
+
+    summary = write_research_signal_handoff_manifest(
+        handoff_path,
+        research_export_manifest=research_manifest_path,
+        source_family_catalog_manifest=catalog_summary["manifest_path"],
+        consumer_contract_registry_manifest=contract_summary["manifest_path"],
+        consumer="research:nasdaq_sp500_cape_vix_external_context_precomputed",
+    )
+
+    assert summary["schema_version"] == "market_signal_research_handoff.v1"
+    assert summary["artifact_type"] == "market_signal_research_handoff"
+    assert summary["consumer"] == (
+        "research:nasdaq_sp500_cape_vix_external_context_precomputed"
+    )
+    assert summary["research_transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert summary["research_quality_report_sha256"] == _sha256(quality_report_path)
+    assert summary["source_families"] == (
+        "us_equity.nasdaq_sp500_public_context_daily",
+    )
+    assert summary["consumer_contracts"] == (
+        "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+    )
+    assert summary["summary_verified"] is True
+
+    validation_summary = validate_research_signal_handoff_manifest(
+        handoff_path,
+        consumer="research:nasdaq_sp500_cape_vix_external_context_precomputed",
+    )
+    assert validation_summary["sha256"] == _sha256(handoff_path)
+
+    cli_handoff_path = tmp_path / "cli_research_handoff.json"
+    write_result = research_handoff_main(
+        [
+            "--output-manifest",
+            str(cli_handoff_path),
+            "--research-export-manifest",
+            str(research_manifest_path),
+            "--source-family-catalog-manifest",
+            str(catalog_summary["manifest_path"]),
+            "--consumer-contract-registry-manifest",
+            str(contract_summary["manifest_path"]),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--pretty",
+        ]
+    )
+    assert write_result == 0
+    cli_summary = json.loads(capsys.readouterr().out)
+    assert cli_summary["path"] == str(cli_handoff_path.resolve())
+    assert cli_summary["source_families"] == [
+        "us_equity.nasdaq_sp500_public_context_daily"
+    ]
+
+    validate_result = research_handoff_main(
+        [
+            "--validate-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_cape_vix_external_context_precomputed",
+            "--pretty",
+        ]
+    )
+    assert validate_result == 0
+    cli_validate_summary = json.loads(capsys.readouterr().out)
+    assert cli_validate_summary["sha256"] == _sha256(cli_handoff_path)
+
+    wrong_consumer_result = research_handoff_main(
+        [
+            "--validate-manifest",
+            str(cli_handoff_path),
+            "--consumer",
+            "research:nasdaq_sp500_external_context_precomputed",
+        ]
+    )
+    assert wrong_consumer_result == 2
+    assert "missing family for consumer" in capsys.readouterr().err
+
+    crypto_catalog_summary = write_signal_source_family_catalog_artifacts(
+        tmp_path / "crypto-source-catalog",
+        families=("crypto.btc_cycle_daily",),
+    )
+    with pytest.raises(ValueError, match="missing family for transform"):
+        write_research_signal_handoff_manifest(
+            tmp_path / "bad_research_handoff.json",
+            research_export_manifest=research_manifest_path,
+            source_family_catalog_manifest=crypto_catalog_summary["manifest_path"],
+            consumer_contract_registry_manifest=contract_summary["manifest_path"],
         )
 
 

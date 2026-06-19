@@ -265,6 +265,29 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --pretty
 ```
 
+For offline research CSVs, build a research handoff instead of a platform
+handoff. It pins the research export manifest, source family catalog manifest,
+and consumer contract registry manifest as one auditable unit:
+
+```bash
+python -m market_signal_sources.cli.build_research_handoff \
+  --research-export-manifest ./data/output/research/us_equity_public_context.manifest.json \
+  --source-family-catalog-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
+  --consumer-contract-registry-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
+  --output-manifest ./data/output/research_handoff.json \
+  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
+  --pretty
+
+python -m market_signal_sources.cli.build_research_handoff \
+  --validate-manifest ./data/output/research_handoff.json \
+  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
+  --pretty
+```
+
+The research handoff validates the linked research CSV manifest and verifies
+that the source catalog contains a family with the export transform and target
+research consumer, while the registry contains the same consumer contract.
+
 Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
 
 ```bash

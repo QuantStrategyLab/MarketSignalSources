@@ -39,11 +39,18 @@ The platform-facing outputs are:
 - `market_signal_platform_handoff_index.v1`: platform-facing index that lets
   consumers resolve the latest matching handoff by consumer, canonical input,
   freshness, and `as_of`.
+- `market_signal_research_handoff.v1`: research-facing manifest that pins one
+  `research_export.v1` CSV manifest, the source family catalog manifest, and the
+  consumer contract registry manifest as one offline research unit.
 
 For offline strategy research, `research_export.v1` can also pin a
 `quality_report` file record. That keeps public or local context-source quality
 proofs attached to the exact CSV that downstream backtests consume, even when the
 artifact is not a runtime `market_signal_bundle.v1`.
+`market_signal_research_handoff.v1` adds the matching contract layer for those
+CSVs: validation checks the linked research export hash, verifies that the source
+catalog has a family matching the export transform and target research consumer,
+and confirms the consumer registry contains the same contract.
 
 ## Design Pressure
 
@@ -126,6 +133,10 @@ credential paths, or service lifecycle ownership.
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime
 bundle files.
+When a research CSV is ready to share with a strategy repository, publish
+`market_signal_research_handoff.v1` alongside it so the CSV manifest, source
+family catalog manifest, and consumer contract registry manifest are pinned
+together.
 The BTC path uses `artifact_type=btc_cycle_research_csv`; the Nasdaq/S&P
 external context path uses `artifact_type=us_equity_context_research_csv` and
 `transform=us_equity.nasdaq_sp500.context.v1`. Both are hash-pinned offline

@@ -45,6 +45,11 @@ from .platform_handoff import (
     write_platform_signal_handoff_manifest,
 )
 from .research_export import RESEARCH_EXPORT_SCHEMA_VERSION, write_research_export_manifest
+from .research_handoff import (
+    MARKET_SIGNAL_RESEARCH_HANDOFF_SCHEMA_VERSION,
+    validate_research_signal_handoff_manifest,
+    write_research_signal_handoff_manifest,
+)
 from .source_catalog import (
     SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION,
     SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION,
@@ -85,6 +90,7 @@ __all__ = [
     "MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION",
     "MARKET_SIGNAL_PLATFORM_HANDOFF_INDEX_SCHEMA_VERSION",
     "MARKET_SIGNAL_PLATFORM_HANDOFF_SCHEMA_VERSION",
+    "MARKET_SIGNAL_RESEARCH_HANDOFF_SCHEMA_VERSION",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_SCHEMA_VERSION",
@@ -116,6 +122,7 @@ __all__ = [
     "signal_bundle_audit_summary",
     "signal_bundle_consumer_audit_summary",
     "validate_research_export_manifest",
+    "validate_research_signal_handoff_manifest",
     "validate_signal_bundle",
     "validate_signal_bundle_for_consumer",
     "validate_signal_bundle_indicator_fields",
@@ -128,6 +135,7 @@ __all__ = [
     "validate_platform_signal_handoff_index",
     "validate_platform_signal_handoff_manifest",
     "write_research_export_manifest",
+    "write_research_signal_handoff_manifest",
     "write_consumer_contract_registry",
     "write_consumer_contract_registry_artifacts",
     "write_signal_source_family_catalog",
