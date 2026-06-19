@@ -260,11 +260,15 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
     assert payload["provider_timestamp"] == "2025-09-17T00:00:00Z"
     assert manifest["schema_version"] == "market_signal_manifest.v1"
     assert manifest["bundle_sha256"] == _sha256(paths["signal_bundle"])
+    assert manifest["compatible_profiles"] == signal_bundle["consumer_contract"][
+        "compatible_profiles"
+    ]
     assert manifest["quality_report_path"] == "quality_report.json"
     assert manifest["quality_report_sha256"] == _sha256(quality_report_path)
     assert quality_report["quality_status"] == "pass"
     assert index["schema_version"] == "market_signal_index.v1"
     assert index["bundles"][0]["manifest_sha256"] == _sha256(paths["manifest"])
+    assert index["bundles"][0]["compatible_profiles"] == manifest["compatible_profiles"]
 
     manifest_summary = validate_signal_bundle_manifest(paths["manifest"])
     index_summary = validate_signal_bundle_index(paths["index"], as_of="2025-09-18")
@@ -962,6 +966,22 @@ def test_validator_rejects_manifest_path_escape(tmp_path) -> None:
         validate_signal_bundle_manifest(paths["manifest"])
 
 
+def test_validator_rejects_manifest_compatible_profile_mismatch(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+    manifest["compatible_profiles"] = ["research:wrong_consumer"]
+    paths["manifest"].write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
+        validate_signal_bundle_manifest(paths["manifest"])
+
+
 def test_validator_rejects_index_manifest_checksum_mismatch(tmp_path) -> None:
     bundle = build_btc_cycle_signal_bundle(
         _btc_frame(),
@@ -975,4 +995,20 @@ def test_validator_rejects_index_manifest_checksum_mismatch(tmp_path) -> None:
     paths["index"].write_text(json.dumps(index), encoding="utf-8")
 
     with pytest.raises(SignalBundleValidationError, match="manifest_sha256 mismatch"):
+        validate_signal_bundle_index(paths["index"])
+
+
+def test_validator_rejects_index_compatible_profile_mismatch(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    paths = write_signal_bundle_artifacts(tmp_path, bundle)
+    index = json.loads(paths["index"].read_text(encoding="utf-8"))
+    index["bundles"][0]["compatible_profiles"] = ["research:wrong_consumer"]
+    paths["index"].write_text(json.dumps(index), encoding="utf-8")
+
+    with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
         validate_signal_bundle_index(paths["index"])

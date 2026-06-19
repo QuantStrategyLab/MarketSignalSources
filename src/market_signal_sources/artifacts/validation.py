@@ -502,9 +502,20 @@ def _validate_manifest(manifest: Mapping[str, Any]) -> None:
             "unsupported signal bundle manifest schema_version: "
             f"{manifest.get('schema_version')!r}"
         )
-    for field in ("bundle_path", "bundle_sha256", "bundle_id", "as_of", "canonical_input"):
+    for field in (
+        "bundle_path",
+        "bundle_sha256",
+        "bundle_id",
+        "as_of",
+        "canonical_input",
+        "compatible_profiles",
+    ):
         if not _has_non_empty_value(manifest, field):
             raise SignalBundleValidationError(f"signal bundle manifest missing field: {field}")
+    _string_sequence(
+        manifest.get("compatible_profiles"),
+        field="signal bundle manifest compatible_profiles",
+    )
     quality_path_present = _has_non_empty_value(manifest, "quality_report_path")
     quality_sha_present = _has_non_empty_value(manifest, "quality_report_sha256")
     if quality_path_present != quality_sha_present:
@@ -643,12 +654,17 @@ def _validate_index(index: Mapping[str, Any]) -> None:
             "bundle_id",
             "as_of",
             "canonical_input",
+            "compatible_profiles",
             "freshness_status",
         ):
             if not _has_non_empty_value(entry, field):
                 raise SignalBundleValidationError(
                     f"signal bundle index entry missing field: {field}"
                 )
+        _string_sequence(
+            entry.get("compatible_profiles"),
+            field="signal bundle index compatible_profiles",
+        )
 
 
 def _validate_research_export_manifest_shape(
@@ -856,6 +872,16 @@ def _validate_manifest_bundle_consistency(
             "signal bundle manifest canonical_input mismatch: "
             f"{manifest_canonical_input!r} != {_canonical_input(bundle)!r}"
         )
+    manifest_profiles = _string_sequence(
+        manifest.get("compatible_profiles"),
+        field="signal bundle manifest compatible_profiles",
+    )
+    bundle_profiles = _compatible_profiles(bundle)
+    if manifest_profiles != bundle_profiles:
+        raise SignalBundleValidationError(
+            "signal bundle manifest compatible_profiles mismatch: "
+            f"{manifest_profiles!r} != {bundle_profiles!r}"
+        )
     manifest_bundle_schema = str(manifest.get("bundle_schema_version", "")).strip()
     if manifest_bundle_schema and manifest_bundle_schema != str(bundle.get("schema_version", "")).strip():
         raise SignalBundleValidationError(
@@ -891,6 +917,19 @@ def _validate_index_manifest_consistency(
             "signal bundle index freshness_status mismatch: "
             f"{entry_freshness!r} != {manifest_freshness!r}"
         )
+    entry_profiles = _string_sequence(
+        entry.get("compatible_profiles"),
+        field="signal bundle index compatible_profiles",
+    )
+    manifest_profiles = _string_sequence(
+        manifest.get("compatible_profiles"),
+        field="signal bundle manifest compatible_profiles",
+    )
+    if entry_profiles != manifest_profiles:
+        raise SignalBundleValidationError(
+            "signal bundle index compatible_profiles mismatch: "
+            f"{entry_profiles!r} != {manifest_profiles!r}"
+        )
 
 
 def _canonical_input(bundle: Mapping[str, Any]) -> str:
@@ -925,6 +964,19 @@ def _compatible_profiles(bundle: Mapping[str, Any]) -> tuple[str, ...]:
         raise SignalBundleValidationError(
             "consumer_contract.compatible_profiles must include at least one profile"
         )
+    return tuple(normalized)
+
+
+def _string_sequence(value: object, *, field: str) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise SignalBundleValidationError(f"{field} must be a non-empty sequence")
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise SignalBundleValidationError(f"{field} items must be non-empty strings")
+        normalized.append(item.strip())
+    if not normalized:
+        raise SignalBundleValidationError(f"{field} must include at least one item")
     return tuple(normalized)
 
 

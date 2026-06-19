@@ -79,6 +79,8 @@ credential paths, or service lifecycle ownership.
 4. Validate the manifest or index with the target consumer identifier. This
    checks both `consumer_contract.compatible_profiles` membership and required
    indicator field coverage.
+   The manifest and index also carry `compatible_profiles`, and validation
+   rejects profile drift across index, manifest, and bundle.
 5. Publish the consumer contract registry with its manifest.
 6. Strategy CI validates both the signal manifest and the consumer contract
    registry before allowing a strategy config to reference the artifact.

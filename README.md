@@ -86,6 +86,8 @@ Plain manifest/index audit summaries also include `compatible_profiles`, so CI
 logs can show the allowed consumer set without printing signal values.
 Base bundle validation rejects missing, empty, or malformed `compatible_profiles`
 even when no target `--consumer` is supplied.
+Published manifest and index entries carry the same `compatible_profiles` and
+validation rejects drift between index, manifest, and bundle.
 
 Consumer field requirements are also exposed as a JSON registry so platform and
 strategy repositories can run drift checks without importing this package at

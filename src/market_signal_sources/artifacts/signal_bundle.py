@@ -183,13 +183,17 @@ def _manifest_for_bundle(
     freshness = bundle.get("freshness")
     if not isinstance(freshness, dict):
         raise ValueError("bundle freshness must be a mapping")
+    consumer_contract = bundle.get("consumer_contract")
+    if not isinstance(consumer_contract, dict):
+        raise ValueError("bundle consumer_contract must be a mapping")
     manifest = {
         "schema_version": MARKET_SIGNAL_MANIFEST_SCHEMA_VERSION,
         "bundle_path": "signal_bundle.json",
         "bundle_sha256": bundle_sha256,
         "bundle_id": bundle["bundle_id"],
         "as_of": bundle["as_of"],
-        "canonical_input": bundle["consumer_contract"]["canonical_input"],
+        "canonical_input": consumer_contract["canonical_input"],
+        "compatible_profiles": list(consumer_contract["compatible_profiles"]),
         "bundle_schema_version": bundle["schema_version"],
         "freshness_status": freshness.get("status", ""),
     }
@@ -220,6 +224,7 @@ def _index_for_manifest(manifest: dict[str, Any], *, manifest_sha256: str) -> di
                 "bundle_id": manifest["bundle_id"],
                 "as_of": manifest["as_of"],
                 "canonical_input": manifest["canonical_input"],
+                "compatible_profiles": list(manifest["compatible_profiles"]),
                 "freshness_status": manifest.get("freshness_status", ""),
             }
         ],
