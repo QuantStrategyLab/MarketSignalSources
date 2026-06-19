@@ -39,6 +39,10 @@ Outputs:
 - `manifest.json`
 - `index.json`
 
+The bundle writer self-validates the written `index.json` -> `manifest.json` ->
+`signal_bundle.json` chain by default before returning paths, so a structurally
+inconsistent bundle fails during the build step rather than later in platform CI.
+
 `quality_report.json` uses `market_signal_quality_report.v1` and records raw row
 count, normalized row count, date range, duplicate dates, dropped invalid rows,
 gap checks, minimum-history status, and the input CSV hash. `manifest.json`

@@ -292,6 +292,30 @@ def test_write_signal_bundle_artifacts_with_manifest_and_index(tmp_path) -> None
         validate_signal_bundle_manifest(paths["manifest"])
 
 
+def test_write_signal_bundle_artifacts_self_validates_written_index(tmp_path) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+    )
+    del bundle["provenance"]["provider_dataset"]
+
+    with pytest.raises(
+        SignalBundleValidationError,
+        match="provenance missing required fields: provider_dataset",
+    ):
+        write_signal_bundle_artifacts(tmp_path, bundle)
+
+    paths = write_signal_bundle_artifacts(
+        tmp_path / "unchecked",
+        bundle,
+        validate_after_write=False,
+    )
+    with pytest.raises(SignalBundleValidationError, match="provider_dataset"):
+        validate_signal_bundle_index(paths["index"])
+
+
 def test_cli_builds_btc_cycle_bundle_from_csv(tmp_path, capsys) -> None:
     input_csv = tmp_path / "btc.csv"
     output_dir = tmp_path / "out"

@@ -70,7 +70,8 @@ credential paths, or service lifecycle ownership.
 
 1. Build a source bundle from local or upstream-approved input data.
 2. Write `quality_report.json`, `signal_bundle.json`, `manifest.json`, and
-   `index.json`.
+   `index.json`. The artifact writer validates the written index chain by
+   default before returning publishable paths.
 3. Validate `quality_report.json` directly, then validate its hash through
    `manifest.json`.
 4. Validate the manifest or index with the target consumer identifier.

@@ -82,6 +82,7 @@ def write_signal_bundle_artifacts(
     bundle: dict[str, Any],
     *,
     quality_report_path: str | PathLike[str] | None = None,
+    validate_after_write: bool = True,
 ) -> dict[str, Path]:
     """Write signal bundle, manifest, and local index artifacts."""
 
@@ -103,6 +104,8 @@ def write_signal_bundle_artifacts(
     manifest_sha256 = _sha256_file(manifest_path)
     index = _index_for_manifest(manifest, manifest_sha256=manifest_sha256)
     _write_json(index_path, index)
+    if validate_after_write:
+        _validate_written_signal_bundle_index(index_path, bundle)
 
     return {
         "signal_bundle": bundle_path,
@@ -166,6 +169,21 @@ def _index_for_manifest(manifest: dict[str, Any], *, manifest_sha256: str) -> di
 
 def sha256_file(path: str | PathLike[str]) -> str:
     return _sha256_file(Path(path))
+
+
+def _validate_written_signal_bundle_index(index_path: Path, bundle: dict[str, Any]) -> None:
+    freshness = bundle.get("freshness")
+    freshness_status = ""
+    if isinstance(freshness, dict):
+        freshness_status = str(freshness.get("status", "")).strip()
+    from .validation import validate_signal_bundle_index
+
+    validate_signal_bundle_index(
+        index_path,
+        as_of=str(bundle.get("as_of", "")).strip() or None,
+        bundle_id=str(bundle.get("bundle_id", "")).strip() or None,
+        accepted_freshness_statuses=(freshness_status or FRESHNESS_FRESH,),
+    )
 
 
 def _sha256_file(path: Path) -> str:
