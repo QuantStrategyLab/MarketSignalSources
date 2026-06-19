@@ -95,7 +95,11 @@ downstream field coverage before publishing. For
 `BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
 The production `us_equity:ibit_smart_dca` consumer currently requires only
 `ahr999`; `research:ibit_btc_ahr999_precomputed` mirrors that AHR999-only
-profile for offline candidate comparisons.
+profile for offline candidate comparisons. The research-only
+`research:ibit_btc_ahr999_helper_precomputed_variants` consumer covers the
+precomputed helper fields `ahr999_365d_percentile` and `ahr999_30d_slope`, plus
+`ahr999`, so IBIT helper candidates can be checked against a published contract
+instead of relying on loose CSV column names.
 Plain manifest/index audit summaries also include `compatible_profiles`, so CI
 logs can show the allowed consumer set without printing signal values.
 Base bundle validation rejects missing, empty, or malformed `compatible_profiles`
@@ -175,7 +179,10 @@ The currently implemented US equity research family is
 `US-EQUITY-CONTEXT` fields for `cape_percentile`, `vix_percentile`, and
 `breadth_above_sma200_pct`. It is compatible with the research consumer
 `research:nasdaq_sp500_external_context_precomputed`; it is not a runtime
-strategy default.
+strategy default. Its catalog record also includes source profiles for FRED
+`VIXCLS`, Shiller CAPE snapshots, and point-in-time index breadth history. The
+breadth profile explicitly rejects current-constituent backfills because they
+create survivorship bias.
 Catalog validation also cross-checks every compatible consumer profile against
 the consumer contract registry, so a family cannot claim support for a strategy
 unless its produced symbols and fields cover that strategy's required indicators.
@@ -286,6 +293,7 @@ python -m market_signal_sources.cli.export_us_equity_context_research_csv \
   --output-csv ./data/output/research/us_equity_context.csv \
   --manifest-path ./data/output/research/us_equity_context.manifest.json \
   --quality-report ./data/output/research/us_equity_context.quality.json \
+  --require-point-in-time-metadata \
   --as-of 2026-06-19 \
   --pretty
 ```
@@ -296,7 +304,12 @@ for strategy research joins. Its manifest uses
 `artifact_type=us_equity_context_research_csv` and
 `transform=us_equity.nasdaq_sp500.context.v1`. The optional quality report
 records missing columns, invalid dates, out-of-range percentile values,
-duplicate dates, date gaps, and rows filtered after `as_of`.
+duplicate dates, date gaps, rows filtered after `as_of`, missing
+`provider_timestamp`, provider timestamps after `as_of`, and optional breadth
+universe metadata such as `breadth_universe_snapshot_id` and
+`breadth_universe_as_of`. Without `--require-point-in-time-metadata`, missing
+provider or breadth metadata is a warning; with it, those missing point-in-time
+proof fields fail the export before strategy research can rank candidates.
 
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match

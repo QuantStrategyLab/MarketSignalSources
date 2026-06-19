@@ -105,6 +105,10 @@ def build_nasdaq_sp500_context_availability_report(
     cape_percentile_column: str = "cape_percentile",
     vix_percentile_column: str = "vix_percentile",
     breadth_column: str = "breadth_above_sma200_pct",
+    provider_timestamp_column: str | None = "provider_timestamp",
+    breadth_universe_snapshot_column: str | None = "breadth_universe_snapshot_id",
+    breadth_universe_as_of_column: str | None = "breadth_universe_as_of",
+    require_point_in_time_metadata: bool = False,
     min_history_rows: int = 1,
     max_allowed_gap_days: int = 7,
 ) -> dict[str, Any]:
@@ -132,8 +136,14 @@ def build_nasdaq_sp500_context_availability_report(
         return _availability_report_payload(
             input_record=input_record,
             selected_columns=selected_columns,
+            metadata_columns=_metadata_columns(
+                provider_timestamp_column=provider_timestamp_column,
+                breadth_universe_snapshot_column=breadth_universe_snapshot_column,
+                breadth_universe_as_of_column=breadth_universe_as_of_column,
+            ),
             source_columns=tuple(str(column) for column in raw.columns),
             as_of=as_of,
+            require_point_in_time_metadata=require_point_in_time_metadata,
             min_history_rows=min_history_rows,
             max_allowed_gap_days=max_allowed_gap_days,
             raw_row_count=len(raw),
@@ -142,6 +152,16 @@ def build_nasdaq_sp500_context_availability_report(
             invalid_date_count=0,
             null_indicator_count_by_field={field: 0 for field in NASDAQ_SP500_CONTEXT_FIELDS},
             out_of_range_count_by_field={field: 0 for field in NASDAQ_SP500_CONTEXT_FIELDS},
+            provider_timestamp_missing_column=bool(provider_timestamp_column),
+            provider_timestamp_missing_count=0,
+            provider_timestamp_after_as_of_count=0,
+            breadth_universe_snapshot_missing_column=bool(
+                breadth_universe_snapshot_column
+            ),
+            breadth_universe_snapshot_missing_count=0,
+            breadth_universe_as_of_missing_column=bool(breadth_universe_as_of_column),
+            breadth_universe_as_of_invalid_count=0,
+            breadth_universe_as_of_after_observation_count=0,
             duplicate_date_count=0,
             first_date="",
             last_date="",
@@ -175,6 +195,15 @@ def build_nasdaq_sp500_context_availability_report(
     for field in NASDAQ_SP500_CONTEXT_FIELDS:
         usable = usable.loc[usable[field].between(0.0, 1.0)]
 
+    metadata_audit = _point_in_time_metadata_audit(
+        raw,
+        dates=dates,
+        as_of=as_of,
+        provider_timestamp_column=provider_timestamp_column,
+        breadth_universe_snapshot_column=breadth_universe_snapshot_column,
+        breadth_universe_as_of_column=breadth_universe_as_of_column,
+    )
+
     filtered_after_as_of_count = 0
     if as_of:
         cutoff = pd.Timestamp(as_of).normalize()
@@ -198,6 +227,12 @@ def build_nasdaq_sp500_context_availability_report(
     failure_reasons = []
     if len(normalized) < int(min_history_rows):
         failure_reasons.append("insufficient_history_rows")
+    failure_reasons.extend(
+        _point_in_time_metadata_failure_reasons(
+            metadata_audit,
+            require_point_in_time_metadata=require_point_in_time_metadata,
+        )
+    )
     warning_reasons = _availability_warning_reasons(
         invalid_date_count=invalid_date_count,
         null_indicator_count_by_field=null_indicator_count_by_field,
@@ -205,12 +240,20 @@ def build_nasdaq_sp500_context_availability_report(
         duplicate_date_count=duplicate_date_count,
         filtered_after_as_of_count=filtered_after_as_of_count,
         gap_count_above_threshold=gap_count,
+        metadata_audit=metadata_audit,
+        require_point_in_time_metadata=require_point_in_time_metadata,
     )
     return _availability_report_payload(
         input_record=input_record,
         selected_columns=selected_columns,
+        metadata_columns=_metadata_columns(
+            provider_timestamp_column=provider_timestamp_column,
+            breadth_universe_snapshot_column=breadth_universe_snapshot_column,
+            breadth_universe_as_of_column=breadth_universe_as_of_column,
+        ),
         source_columns=tuple(str(column) for column in raw.columns),
         as_of=as_of,
+        require_point_in_time_metadata=require_point_in_time_metadata,
         min_history_rows=min_history_rows,
         max_allowed_gap_days=max_allowed_gap_days,
         raw_row_count=len(raw),
@@ -219,6 +262,30 @@ def build_nasdaq_sp500_context_availability_report(
         invalid_date_count=invalid_date_count,
         null_indicator_count_by_field=null_indicator_count_by_field,
         out_of_range_count_by_field=out_of_range_count_by_field,
+        provider_timestamp_missing_column=metadata_audit[
+            "provider_timestamp_missing_column"
+        ],
+        provider_timestamp_missing_count=metadata_audit[
+            "provider_timestamp_missing_count"
+        ],
+        provider_timestamp_after_as_of_count=metadata_audit[
+            "provider_timestamp_after_as_of_count"
+        ],
+        breadth_universe_snapshot_missing_column=metadata_audit[
+            "breadth_universe_snapshot_missing_column"
+        ],
+        breadth_universe_snapshot_missing_count=metadata_audit[
+            "breadth_universe_snapshot_missing_count"
+        ],
+        breadth_universe_as_of_missing_column=metadata_audit[
+            "breadth_universe_as_of_missing_column"
+        ],
+        breadth_universe_as_of_invalid_count=metadata_audit[
+            "breadth_universe_as_of_invalid_count"
+        ],
+        breadth_universe_as_of_after_observation_count=metadata_audit[
+            "breadth_universe_as_of_after_observation_count"
+        ],
         duplicate_date_count=duplicate_date_count,
         first_date=first_date,
         last_date=last_date,
@@ -250,8 +317,10 @@ def _availability_report_payload(
     *,
     input_record: dict[str, object],
     selected_columns: dict[str, object],
+    metadata_columns: dict[str, object],
     source_columns: tuple[str, ...],
     as_of: str | None,
+    require_point_in_time_metadata: bool,
     min_history_rows: int,
     max_allowed_gap_days: int,
     raw_row_count: int,
@@ -260,6 +329,14 @@ def _availability_report_payload(
     invalid_date_count: int,
     null_indicator_count_by_field: dict[str, int],
     out_of_range_count_by_field: dict[str, int],
+    provider_timestamp_missing_column: bool,
+    provider_timestamp_missing_count: int,
+    provider_timestamp_after_as_of_count: int,
+    breadth_universe_snapshot_missing_column: bool,
+    breadth_universe_snapshot_missing_count: int,
+    breadth_universe_as_of_missing_column: bool,
+    breadth_universe_as_of_invalid_count: int,
+    breadth_universe_as_of_after_observation_count: int,
     duplicate_date_count: int,
     first_date: str,
     last_date: str,
@@ -276,8 +353,10 @@ def _availability_report_payload(
         "warning_reasons": list(warning_reasons),
         "input_csv": input_record,
         "selected_columns": selected_columns,
+        "metadata_columns": metadata_columns,
         "source_columns": list(source_columns),
         "as_of": None if as_of is None else pd.Timestamp(as_of).normalize().date().isoformat(),
+        "require_point_in_time_metadata": bool(require_point_in_time_metadata),
         "min_history_rows": int(min_history_rows),
         "max_allowed_gap_days": int(max_allowed_gap_days),
         "raw_row_count": int(raw_row_count),
@@ -287,6 +366,24 @@ def _availability_report_payload(
         "invalid_date_count": int(invalid_date_count),
         "null_indicator_count_by_field": dict(null_indicator_count_by_field),
         "out_of_range_count_by_field": dict(out_of_range_count_by_field),
+        "provider_timestamp_missing_column": bool(provider_timestamp_missing_column),
+        "provider_timestamp_missing_count": int(provider_timestamp_missing_count),
+        "provider_timestamp_after_as_of_count": int(provider_timestamp_after_as_of_count),
+        "breadth_universe_snapshot_missing_column": bool(
+            breadth_universe_snapshot_missing_column
+        ),
+        "breadth_universe_snapshot_missing_count": int(
+            breadth_universe_snapshot_missing_count
+        ),
+        "breadth_universe_as_of_missing_column": bool(
+            breadth_universe_as_of_missing_column
+        ),
+        "breadth_universe_as_of_invalid_count": int(
+            breadth_universe_as_of_invalid_count
+        ),
+        "breadth_universe_as_of_after_observation_count": int(
+            breadth_universe_as_of_after_observation_count
+        ),
         "duplicate_date_count": int(duplicate_date_count),
         "first_date": first_date,
         "last_date": last_date,
@@ -303,6 +400,8 @@ def _availability_warning_reasons(
     duplicate_date_count: int,
     filtered_after_as_of_count: int,
     gap_count_above_threshold: int,
+    metadata_audit: dict[str, Any],
+    require_point_in_time_metadata: bool,
 ) -> tuple[str, ...]:
     reasons: list[str] = []
     if invalid_date_count:
@@ -317,7 +416,169 @@ def _availability_warning_reasons(
         reasons.append("rows_after_as_of_filtered")
     if gap_count_above_threshold:
         reasons.append("date_gaps_above_threshold")
+    failure_reasons = set(
+        _point_in_time_metadata_failure_reasons(
+            metadata_audit,
+            require_point_in_time_metadata=require_point_in_time_metadata,
+        )
+    )
+    if (
+        metadata_audit["provider_timestamp_missing_column"]
+        and "missing_provider_timestamp_column" not in failure_reasons
+    ):
+        reasons.append("missing_provider_timestamp_column")
+    if (
+        metadata_audit["provider_timestamp_missing_count"]
+        and "provider_timestamps_missing_or_invalid" not in failure_reasons
+    ):
+        reasons.append("provider_timestamps_missing_or_invalid")
+    if (
+        metadata_audit["provider_timestamp_after_as_of_count"]
+        and "provider_timestamp_after_as_of" not in failure_reasons
+    ):
+        reasons.append("provider_timestamp_after_as_of")
+    if (
+        metadata_audit["breadth_universe_snapshot_missing_column"]
+        and "missing_breadth_universe_snapshot_column" not in failure_reasons
+    ):
+        reasons.append("missing_breadth_universe_snapshot_column")
+    if (
+        metadata_audit["breadth_universe_snapshot_missing_count"]
+        and "breadth_universe_snapshot_missing" not in failure_reasons
+    ):
+        reasons.append("breadth_universe_snapshot_missing")
+    if (
+        metadata_audit["breadth_universe_as_of_missing_column"]
+        and "missing_breadth_universe_as_of_column" not in failure_reasons
+    ):
+        reasons.append("missing_breadth_universe_as_of_column")
+    if (
+        metadata_audit["breadth_universe_as_of_invalid_count"]
+        and "breadth_universe_as_of_invalid" not in failure_reasons
+    ):
+        reasons.append("breadth_universe_as_of_invalid")
+    if (
+        metadata_audit["breadth_universe_as_of_after_observation_count"]
+        and "breadth_universe_as_of_after_observation" not in failure_reasons
+    ):
+        reasons.append("breadth_universe_as_of_after_observation")
     return tuple(reasons)
+
+
+def _point_in_time_metadata_failure_reasons(
+    metadata_audit: dict[str, Any],
+    *,
+    require_point_in_time_metadata: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if require_point_in_time_metadata and metadata_audit[
+        "provider_timestamp_missing_column"
+    ]:
+        reasons.append("missing_provider_timestamp_column")
+    if require_point_in_time_metadata and metadata_audit[
+        "provider_timestamp_missing_count"
+    ]:
+        reasons.append("provider_timestamps_missing_or_invalid")
+    if metadata_audit["provider_timestamp_after_as_of_count"]:
+        reasons.append("provider_timestamp_after_as_of")
+    if require_point_in_time_metadata and metadata_audit[
+        "breadth_universe_snapshot_missing_column"
+    ]:
+        reasons.append("missing_breadth_universe_snapshot_column")
+    if require_point_in_time_metadata and metadata_audit[
+        "breadth_universe_snapshot_missing_count"
+    ]:
+        reasons.append("breadth_universe_snapshot_missing")
+    if require_point_in_time_metadata and metadata_audit[
+        "breadth_universe_as_of_missing_column"
+    ]:
+        reasons.append("missing_breadth_universe_as_of_column")
+    if require_point_in_time_metadata and metadata_audit[
+        "breadth_universe_as_of_invalid_count"
+    ]:
+        reasons.append("breadth_universe_as_of_invalid")
+    if metadata_audit["breadth_universe_as_of_after_observation_count"]:
+        reasons.append("breadth_universe_as_of_after_observation")
+    return reasons
+
+
+def _point_in_time_metadata_audit(
+    frame: pd.DataFrame,
+    *,
+    dates: pd.Series,
+    as_of: str | None,
+    provider_timestamp_column: str | None,
+    breadth_universe_snapshot_column: str | None,
+    breadth_universe_as_of_column: str | None,
+) -> dict[str, Any]:
+    provider_missing_column = bool(
+        provider_timestamp_column and provider_timestamp_column not in frame.columns
+    )
+    provider_missing_count = 0
+    provider_after_as_of_count = 0
+    if provider_timestamp_column and provider_timestamp_column in frame.columns:
+        provider_timestamps = _timestamp_series(frame[provider_timestamp_column])
+        provider_missing_count = int(provider_timestamps.isna().sum())
+        if as_of:
+            cutoff = pd.Timestamp(as_of).normalize()
+            provider_after_as_of_count = int(
+                (provider_timestamps.dt.normalize() > cutoff).fillna(False).sum()
+            )
+
+    snapshot_missing_column = bool(
+        breadth_universe_snapshot_column
+        and breadth_universe_snapshot_column not in frame.columns
+    )
+    snapshot_missing_count = 0
+    if (
+        breadth_universe_snapshot_column
+        and breadth_universe_snapshot_column in frame.columns
+    ):
+        snapshots = frame[breadth_universe_snapshot_column].astype("string")
+        snapshot_missing_count = int(snapshots.fillna("").str.strip().eq("").sum())
+
+    universe_as_of_missing_column = bool(
+        breadth_universe_as_of_column
+        and breadth_universe_as_of_column not in frame.columns
+    )
+    universe_as_of_invalid_count = 0
+    universe_as_of_after_observation_count = 0
+    if breadth_universe_as_of_column and breadth_universe_as_of_column in frame.columns:
+        universe_as_of = _timestamp_series(frame[breadth_universe_as_of_column])
+        universe_as_of_invalid_count = int(universe_as_of.isna().sum())
+        universe_as_of_after_observation_count = int(
+            (universe_as_of.dt.normalize() > dates).fillna(False).sum()
+        )
+
+    return {
+        "provider_timestamp_missing_column": provider_missing_column,
+        "provider_timestamp_missing_count": provider_missing_count,
+        "provider_timestamp_after_as_of_count": provider_after_as_of_count,
+        "breadth_universe_snapshot_missing_column": snapshot_missing_column,
+        "breadth_universe_snapshot_missing_count": snapshot_missing_count,
+        "breadth_universe_as_of_missing_column": universe_as_of_missing_column,
+        "breadth_universe_as_of_invalid_count": universe_as_of_invalid_count,
+        "breadth_universe_as_of_after_observation_count": (
+            universe_as_of_after_observation_count
+        ),
+    }
+
+
+def _timestamp_series(values: pd.Series) -> pd.Series:
+    return pd.to_datetime(values, errors="coerce", utc=True).dt.tz_convert(None)
+
+
+def _metadata_columns(
+    *,
+    provider_timestamp_column: str | None,
+    breadth_universe_snapshot_column: str | None,
+    breadth_universe_as_of_column: str | None,
+) -> dict[str, object]:
+    return {
+        "provider_timestamp": provider_timestamp_column or "",
+        "breadth_universe_snapshot_id": breadth_universe_snapshot_column or "",
+        "breadth_universe_as_of": breadth_universe_as_of_column or "",
+    }
 
 
 def _quality_status(

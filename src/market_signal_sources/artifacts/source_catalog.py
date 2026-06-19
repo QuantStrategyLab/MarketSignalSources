@@ -51,9 +51,26 @@ BTC_CYCLE_DERIVED_INDICATOR_FIELDS: tuple[str, ...] = (
     "sma200",
     "sma200_gap",
 )
+BTC_CYCLE_SOURCE_PROFILES: tuple[dict[str, object], ...] = (
+    {
+        "source_id": "local_csv.btc_usd_daily_ohlcv",
+        "source_name": "Local BTC daily OHLCV cache",
+        "provider_dataset": "btc_usd_daily_ohlcv",
+        "produced_fields": BTC_CYCLE_DERIVED_INDICATOR_FIELDS,
+        "history_frequency": "daily",
+        "point_in_time_status": "cache_snapshot_required",
+        "publication_lag_policy": "crypto_daily_close_t_plus_1",
+        "research_use_policy": (
+            "accepted when raw OHLCV cache hash, provider timestamp, and "
+            "transform version are pinned"
+        ),
+        "source_url": "",
+    },
+)
 BTC_CYCLE_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "us_equity:ibit_smart_dca",
     "research:ibit_btc_ahr999_precomputed",
+    "research:ibit_btc_ahr999_helper_precomputed_variants",
     "research:ibit_btc_ahr999_mayer_precomputed",
     "research:ibit_btc_ahr999_mayer_precomputed_variants",
 )
@@ -63,6 +80,50 @@ US_EQUITY_NASDAQ_SP500_CONTEXT_FIELDS: tuple[str, ...] = (
     "cape_percentile",
     "provider_timestamp",
     "vix_percentile",
+)
+US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES: tuple[dict[str, object], ...] = (
+    {
+        "source_id": "fred.vixcls",
+        "source_name": "Federal Reserve Economic Data VIXCLS",
+        "provider_dataset": "VIXCLS",
+        "produced_fields": ("vix_percentile",),
+        "history_frequency": "daily",
+        "point_in_time_status": "public_history_with_execution_lag",
+        "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
+        "research_use_policy": (
+            "accepted for research when the downloaded CSV, as_of, and "
+            "percentile lookback are hash-pinned"
+        ),
+        "source_url": "https://fred.stlouisfed.org/series/VIXCLS",
+    },
+    {
+        "source_id": "shiller.cape_monthly",
+        "source_name": "Robert Shiller online data CAPE",
+        "provider_dataset": "ie_data.xls",
+        "produced_fields": ("cape_percentile",),
+        "history_frequency": "monthly",
+        "point_in_time_status": "public_revised_history_snapshot_required",
+        "publication_lag_policy": "month-end or later; never same-day daily timing",
+        "research_use_policy": (
+            "accepted for low-frequency valuation research only when the raw "
+            "download snapshot and revision date are preserved"
+        ),
+        "source_url": "https://www.econ.yale.edu/~shiller/data.htm",
+    },
+    {
+        "source_id": "index_breadth.point_in_time_vendor",
+        "source_name": "Point-in-time index breadth history",
+        "provider_dataset": "spx_ndx_members_above_sma200_daily",
+        "produced_fields": ("breadth_above_sma200_pct",),
+        "history_frequency": "daily",
+        "point_in_time_status": "requires_point_in_time_vendor_or_breadth_index",
+        "publication_lag_policy": "vendor timestamp must be no later than DCA evaluation lag",
+        "research_use_policy": (
+            "reject current-constituent backfills; use only point-in-time "
+            "constituents or an auditable historical breadth index"
+        ),
+        "source_url": "",
+    },
 )
 US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES: tuple[str, ...] = (
     "research:nasdaq_sp500_external_context_precomputed",
@@ -127,10 +188,12 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "minimum_history_rows": 200,
         "symbols": ("BTC-USD",),
         "derived_indicator_fields": BTC_CYCLE_DERIVED_INDICATOR_FIELDS,
+        "source_profiles": BTC_CYCLE_SOURCE_PROFILES,
         "compatible_profiles": BTC_CYCLE_COMPATIBLE_PROFILES,
         "runtime_consumers": ("us_equity:ibit_smart_dca",),
         "research_consumers": (
             "research:ibit_btc_ahr999_precomputed",
+            "research:ibit_btc_ahr999_helper_precomputed_variants",
             "research:ibit_btc_ahr999_mayer_precomputed",
             "research:ibit_btc_ahr999_mayer_precomputed_variants",
         ),
@@ -147,6 +210,7 @@ SIGNAL_SOURCE_FAMILIES: dict[str, dict[str, object]] = {
         "minimum_history_rows": 1,
         "symbols": (US_EQUITY_CONTEXT_SYMBOL,),
         "derived_indicator_fields": US_EQUITY_NASDAQ_SP500_CONTEXT_FIELDS,
+        "source_profiles": US_EQUITY_NASDAQ_SP500_CONTEXT_SOURCE_PROFILES,
         "compatible_profiles": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
         "runtime_consumers": (),
         "research_consumers": US_EQUITY_NASDAQ_SP500_CONTEXT_COMPATIBLE_PROFILES,
@@ -175,6 +239,16 @@ def compatible_profiles_for_signal_source_family(family: str) -> tuple[str, ...]
 
     record = signal_source_family_record(family)
     return tuple(str(profile) for profile in record["compatible_profiles"])
+
+
+def source_profiles_for_signal_source_family(family: str) -> tuple[dict[str, Any], ...]:
+    """Return source-profile requirements for a known signal source family."""
+
+    record = signal_source_family_record(family)
+    return tuple(
+        dict(profile)
+        for profile in record.get("source_profiles", [])
+    )
 
 
 def signal_source_family_consumer_contract_coverage(family: str) -> dict[str, Any]:
@@ -292,6 +366,7 @@ def validate_signal_source_family_catalog(
     seen: set[str] = set()
     family_names: list[str] = []
     coverage_by_family: dict[str, Any] = {}
+    source_profiles_by_family: dict[str, Any] = {}
     for record in families:
         if not isinstance(record, dict):
             raise ValueError("signal source family catalog records must be objects")
@@ -303,9 +378,13 @@ def validate_signal_source_family_catalog(
         seen.add(family)
         family_names.append(family)
         expected_record = signal_source_family_record(family)
-        if record != expected_record:
+        if record != expected_record and not _matches_legacy_source_profile_record(
+            record,
+            expected_record,
+        ):
             raise ValueError(f"signal source family record drift: {family}")
         coverage_by_family[family] = _consumer_contract_coverage_summary(record)
+        source_profiles_by_family[family] = _source_profile_summary(record)
 
     domain_coverage_summary = _validate_domain_coverage(
         payload.get("domain_coverage")
@@ -330,6 +409,11 @@ def validate_signal_source_family_catalog(
             bool(summary["all_required_fields_present"])
             for summary in coverage_by_family.values()
         ),
+        "source_profile_count": sum(
+            int(summary["source_profile_count"])
+            for summary in source_profiles_by_family.values()
+        ),
+        "source_profile_coverage": source_profiles_by_family,
     }
 
 
@@ -401,6 +485,17 @@ def _json_safe_value(value: Any) -> Any:
     return value
 
 
+def _matches_legacy_source_profile_record(
+    record: Mapping[str, Any],
+    expected_record: Mapping[str, Any],
+) -> bool:
+    if "source_profiles" in record:
+        return False
+    expected_without_profiles = dict(expected_record)
+    expected_without_profiles.pop("source_profiles", None)
+    return dict(record) == expected_without_profiles
+
+
 def _source_catalog_manifest(
     catalog_summary: Mapping[str, Any],
     *,
@@ -418,6 +513,7 @@ def _source_catalog_manifest(
         "known_family_count": catalog_summary["known_family_count"],
         "missing_known_families": catalog_summary["missing_known_families"],
         "all_known_families_present": catalog_summary["all_known_families_present"],
+        "source_profile_count": catalog_summary["source_profile_count"],
         "all_consumer_contracts_satisfied": catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
@@ -454,6 +550,7 @@ def _source_catalog_manifest_summary(
         "all_consumer_contracts_satisfied": catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
+        "source_profile_count": catalog_summary["source_profile_count"],
     }
 
 
@@ -548,6 +645,8 @@ def _validate_source_catalog_manifest_consistency(
             "all_consumer_contracts_satisfied"
         ],
     }
+    if "source_profile_count" in manifest:
+        expected_values["source_profile_count"] = catalog_summary["source_profile_count"]
     for field, expected in expected_values.items():
         if manifest[field] != expected:
             raise ValueError(
@@ -721,6 +820,96 @@ def _consumer_contract_coverage_summary(record: Mapping[str, Any]) -> dict[str, 
         "symbols": symbols,
         "required_indicator_fields_by_consumer": required_by_consumer,
         "all_required_fields_present": True,
+    }
+
+
+def _source_profile_summary(record: Mapping[str, Any]) -> dict[str, Any]:
+    family = str(record.get("family", "")).strip()
+    fields = _normalized_field_set(
+        record.get("derived_indicator_fields"),
+        field="derived_indicator_fields",
+        family=family,
+    )
+    raw_profiles = record.get("source_profiles")
+    if raw_profiles is None:
+        return {
+            "source_profile_count": 0,
+            "source_ids": [],
+            "covered_fields": [],
+            "profiles": [],
+        }
+    if not isinstance(raw_profiles, list) or not raw_profiles:
+        raise ValueError(f"signal source family {family} source_profiles must be a list")
+
+    seen: set[str] = set()
+    profile_summaries: list[dict[str, object]] = []
+    for profile in raw_profiles:
+        if not isinstance(profile, Mapping):
+            raise ValueError(
+                f"signal source family {family} source_profiles records must be objects"
+            )
+        source_id = str(profile.get("source_id", "")).strip()
+        if not source_id:
+            raise ValueError(
+                f"signal source family {family} source_profiles source_id is required"
+            )
+        if source_id in seen:
+            raise ValueError(
+                f"signal source family {family} source_profiles duplicate source_id: "
+                f"{source_id}"
+            )
+        seen.add(source_id)
+        produced_fields = _normalized_sequence(
+            profile.get("produced_fields"),
+            field="source_profiles.produced_fields",
+            family=family,
+        )
+        unknown_fields = sorted(
+            field
+            for field in produced_fields
+            if field.lower() not in fields
+        )
+        if unknown_fields:
+            raise ValueError(
+                f"signal source family {family} source profile {source_id} "
+                "produced fields are not derived_indicator_fields: "
+                + ", ".join(unknown_fields)
+            )
+        required_text_fields = (
+            "source_name",
+            "provider_dataset",
+            "history_frequency",
+            "point_in_time_status",
+            "publication_lag_policy",
+            "research_use_policy",
+        )
+        for field in required_text_fields:
+            if not str(profile.get(field, "")).strip():
+                raise ValueError(
+                    f"signal source family {family} source profile {source_id} "
+                    f"{field} is required"
+                )
+        profile_summaries.append(
+            {
+                "source_id": source_id,
+                "produced_fields": produced_fields,
+                "point_in_time_status": str(profile["point_in_time_status"]),
+                "history_frequency": str(profile["history_frequency"]),
+            }
+        )
+
+    covered_fields = sorted(
+        {
+            field
+            for summary in profile_summaries
+            for field in summary["produced_fields"]
+        }
+    )
+    return {
+        "source_profile_count": len(profile_summaries),
+        "source_ids": [str(summary["source_id"]) for summary in profile_summaries],
+        "covered_fields": covered_fields,
+        "profiles": profile_summaries,
     }
 
 

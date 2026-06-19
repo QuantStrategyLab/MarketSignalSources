@@ -23,6 +23,7 @@ from market_signal_sources.artifacts.source_catalog import (
     signal_source_family_consumer_contract_coverage,
     signal_source_family_catalog_payload,
     signal_source_family_record,
+    source_profiles_for_signal_source_family,
     validate_signal_source_family_catalog,
     validate_signal_source_family_catalog_file,
     validate_signal_source_family_catalog_manifest,
@@ -417,10 +418,13 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
         "crypto.btc_cycle_daily"
     )
     assert coverage["all_required_fields_present"] is True
-    assert coverage["consumer_count"] == 4
+    assert coverage["consumer_count"] == 5
     assert coverage["required_indicator_fields_by_consumer"][
         "us_equity:ibit_smart_dca"
     ] == {"BTC-USD": ["ahr999"]}
+    assert coverage["required_indicator_fields_by_consumer"][
+        "research:ibit_btc_ahr999_helper_precomputed_variants"
+    ] == {"BTC-USD": ["ahr999", "ahr999_365d_percentile", "ahr999_30d_slope"]}
     assert coverage["required_indicator_fields_by_consumer"][
         "research:ibit_btc_ahr999_mayer_precomputed_variants"
     ] == {"BTC-USD": ["ahr999", "ahr999_sma", "mayer_multiple"]}
@@ -440,6 +444,55 @@ def test_signal_source_family_catalog_tracks_btc_cycle_bundle_contract() -> None
             "vix_percentile",
         ]
     }
+    assert us_context_record["source_profiles"] == [
+        {
+            "source_id": "fred.vixcls",
+            "source_name": "Federal Reserve Economic Data VIXCLS",
+            "provider_dataset": "VIXCLS",
+            "produced_fields": ["vix_percentile"],
+            "history_frequency": "daily",
+            "point_in_time_status": "public_history_with_execution_lag",
+            "publication_lag_policy": "use at least T+1 before same-day DCA decisions",
+            "research_use_policy": (
+                "accepted for research when the downloaded CSV, as_of, and "
+                "percentile lookback are hash-pinned"
+            ),
+            "source_url": "https://fred.stlouisfed.org/series/VIXCLS",
+        },
+        {
+            "source_id": "shiller.cape_monthly",
+            "source_name": "Robert Shiller online data CAPE",
+            "provider_dataset": "ie_data.xls",
+            "produced_fields": ["cape_percentile"],
+            "history_frequency": "monthly",
+            "point_in_time_status": "public_revised_history_snapshot_required",
+            "publication_lag_policy": "month-end or later; never same-day daily timing",
+            "research_use_policy": (
+                "accepted for low-frequency valuation research only when the raw "
+                "download snapshot and revision date are preserved"
+            ),
+            "source_url": "https://www.econ.yale.edu/~shiller/data.htm",
+        },
+        {
+            "source_id": "index_breadth.point_in_time_vendor",
+            "source_name": "Point-in-time index breadth history",
+            "provider_dataset": "spx_ndx_members_above_sma200_daily",
+            "produced_fields": ["breadth_above_sma200_pct"],
+            "history_frequency": "daily",
+            "point_in_time_status": "requires_point_in_time_vendor_or_breadth_index",
+            "publication_lag_policy": (
+                "vendor timestamp must be no later than DCA evaluation lag"
+            ),
+            "research_use_policy": (
+                "reject current-constituent backfills; use only point-in-time "
+                "constituents or an auditable historical breadth index"
+            ),
+            "source_url": "",
+        },
+    ]
+    assert source_profiles_for_signal_source_family(
+        "us_equity.nasdaq_sp500_context_daily"
+    )[2]["source_id"] == "index_breadth.point_in_time_vendor"
     assert set(record["compatible_profiles"]).issubset(set(known_signal_consumers()))
 
 
@@ -458,6 +511,7 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     assert payload["families"][0]["compatible_profiles"] == [
         "us_equity:ibit_smart_dca",
         "research:ibit_btc_ahr999_precomputed",
+        "research:ibit_btc_ahr999_helper_precomputed_variants",
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
     ]
@@ -484,13 +538,21 @@ def test_signal_source_family_catalog_cli_prints_json_safe_payload(
     assert validation_summary["domains"] == ["crypto", "hk_equity", "us_equity"]
     assert validation_summary["implemented_family_count"] == 2
     assert validation_summary["planned_family_count"] == 7
+    assert validation_summary["source_profile_count"] == 4
     assert validation_summary["all_consumer_contracts_satisfied"] is True
     assert validation_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
-    ]["consumer_count"] == 4
+    ]["consumer_count"] == 5
     assert validation_summary["consumer_contract_coverage"][
         "us_equity.nasdaq_sp500_context_daily"
     ]["consumer_count"] == 1
+    assert validation_summary["source_profile_coverage"][
+        "us_equity.nasdaq_sp500_context_daily"
+    ]["source_ids"] == [
+        "fred.vixcls",
+        "shiller.cape_monthly",
+        "index_breadth.point_in_time_vendor",
+    ]
     assert validation_summary["sha256"] == _sha256(catalog_path)
 
     legacy_payload = signal_source_family_catalog_payload()
@@ -545,6 +607,37 @@ def test_signal_source_family_catalog_validation_rejects_contract_gap(
         validate_signal_source_family_catalog(payload)
 
 
+def test_signal_source_family_catalog_validation_rejects_source_profile_gap(
+    monkeypatch,
+) -> None:
+    original = SIGNAL_SOURCE_FAMILIES["us_equity.nasdaq_sp500_context_daily"]
+    first_profile = dict(original["source_profiles"][0])
+    first_profile["produced_fields"] = (
+        *tuple(first_profile["produced_fields"]),
+        "unknown_context_field",
+    )
+    monkeypatch.setitem(
+        SIGNAL_SOURCE_FAMILIES,
+        "us_equity.nasdaq_sp500_context_daily",
+        {
+            **original,
+            "source_profiles": (
+                first_profile,
+                *tuple(original["source_profiles"][1:]),
+            ),
+        },
+    )
+    payload = signal_source_family_catalog_payload(
+        families=("us_equity.nasdaq_sp500_context_daily",)
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="produced fields are not derived_indicator_fields",
+    ):
+        validate_signal_source_family_catalog(payload)
+
+
 def test_signal_source_family_catalog_can_publish_manifest(
     tmp_path,
     capsys,
@@ -558,6 +651,7 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert summary["family_count"] == 2
     assert summary["all_consumer_contracts_satisfied"] is True
     assert summary["domain_coverage_present"] is True
+    assert summary["source_profile_count"] == 4
     assert summary["sha256"] == _sha256(output_json)
 
     validate_summary = validate_signal_source_family_catalog_file(
@@ -567,7 +661,7 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert validate_summary["all_known_families_present"] is True
     assert validate_summary["consumer_contract_coverage"][
         "crypto.btc_cycle_daily"
-    ]["consumer_count"] == 4
+    ]["consumer_count"] == 5
 
     output_dir = tmp_path / "catalog-artifacts"
     manifest_summary = write_signal_source_family_catalog_artifacts(output_dir)
@@ -587,8 +681,10 @@ def test_signal_source_family_catalog_can_publish_manifest(
     assert manifest_summary["all_known_families_present"] is True
     assert manifest_summary["domain_count"] == 3
     assert manifest_summary["planned_family_count"] == 7
+    assert manifest_summary["source_profile_count"] == 4
     assert manifest_summary["all_consumer_contracts_satisfied"] is True
     assert manifest["catalog_path"] == "signal_source_families.json"
+    assert manifest["source_profile_count"] == 4
 
     validation_summary = validate_signal_source_family_catalog_manifest(
         manifest_path,
@@ -1077,6 +1173,7 @@ def test_consumer_contract_registry_exports_json_safe_payload(capsys) -> None:
     )
 
     assert known_signal_consumers() == (
+        "research:ibit_btc_ahr999_helper_precomputed_variants",
         "research:ibit_btc_ahr999_mayer_precomputed",
         "research:ibit_btc_ahr999_mayer_precomputed_variants",
         "research:ibit_btc_ahr999_precomputed",
@@ -1213,7 +1310,7 @@ def test_consumer_contract_registry_can_publish_manifest(tmp_path, capsys) -> No
 
     assert validation_summary["registry_sha256"] == _sha256(registry_path)
     assert validation_summary["manifest_sha256"] == _sha256(manifest_path)
-    assert validation_summary["consumer_count"] == 5
+    assert validation_summary["consumer_count"] == 6
 
     cli_output_dir = tmp_path / "cli-contracts"
     result = list_contracts_main(
@@ -1264,7 +1361,7 @@ def test_consumer_contract_registry_validation_can_require_all_consumers(tmp_pat
 
     assert summary["all_known_consumers_present"] is True
     assert summary["missing_known_consumers"] == []
-    assert summary["consumer_count"] == 5
+    assert summary["consumer_count"] == 6
 
 
 def test_consumer_contract_registry_validation_rejects_drift(tmp_path) -> None:
@@ -1333,7 +1430,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         "crypto.btc_cycle_daily",
         "us_equity.nasdaq_sp500_context_daily",
     ]
-    assert summary["consumer_contract_count"] == 5
+    assert summary["consumer_contract_count"] == 6
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
     assert summary["signal_bundle_manifest_sha256"] == _sha256(
@@ -1601,7 +1698,15 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     assert quality_report["filtered_after_as_of_count"] == 1
     assert quality_report["normalized_row_count"] == 4
     assert quality_report["failure_reasons"] == []
-    assert quality_report["warning_reasons"] == ["rows_after_as_of_filtered"]
+    assert quality_report["provider_timestamp_missing_column"] is True
+    assert quality_report["breadth_universe_snapshot_missing_column"] is True
+    assert quality_report["breadth_universe_as_of_missing_column"] is True
+    assert quality_report["warning_reasons"] == [
+        "rows_after_as_of_filtered",
+        "missing_provider_timestamp_column",
+        "missing_breadth_universe_snapshot_column",
+        "missing_breadth_universe_as_of_column",
+    ]
     assert list(exported.columns) == [
         "date",
         "QQQ",
@@ -1619,6 +1724,103 @@ def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
     )
     assert validation_summary["row_count"] == 4
     assert validation_summary["columns"] == tuple(exported.columns)
+
+
+def test_us_equity_context_quality_report_checks_point_in_time_metadata(
+    tmp_path,
+    capsys,
+) -> None:
+    dates = pd.date_range("2025-01-02", periods=4, freq="B")
+    input_csv = tmp_path / "us_equity_context_raw.csv"
+    strict_output_csv = tmp_path / "research" / "strict_us_equity_context.csv"
+    strict_quality_report_path = (
+        tmp_path / "research" / "strict_us_equity_context.quality.json"
+    )
+    ok_output_csv = tmp_path / "research" / "ok_us_equity_context.csv"
+    ok_quality_report_path = tmp_path / "research" / "ok_us_equity_context.quality.json"
+    pd.DataFrame(
+        {
+            "date": dates.date,
+            "QQQ": [100.0, 101.0, 102.0, 103.0],
+            "SPY": [90.0, 91.0, 92.0, 93.0],
+            "cape_percentile": [0.70, 0.80, 0.90, 0.85],
+            "vix_percentile": [0.20, 0.40, 0.85, 0.75],
+            "breadth_above_sma200_pct": [0.60, 0.50, 0.35, 0.45],
+            "provider_timestamp": [
+                "2025-01-02T23:00:00Z",
+                "2025-01-03T23:00:00Z",
+                "2025-01-06T23:00:00Z",
+                "2025-01-10T23:00:00Z",
+            ],
+            "breadth_universe_snapshot_id": ["spx-1", "spx-2", "spx-3", "spx-4"],
+            "breadth_universe_as_of": [
+                "2025-01-02",
+                "2025-01-03",
+                "2025-01-08",
+                "2025-01-07",
+            ],
+        }
+    ).to_csv(input_csv, index=False)
+
+    strict_result = export_us_equity_context_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(strict_output_csv),
+            "--quality-report",
+            str(strict_quality_report_path),
+            "--as-of",
+            "2025-01-07",
+            "--require-point-in-time-metadata",
+        ]
+    )
+
+    assert strict_result == 2
+    assert "provider_timestamp_after_as_of" in capsys.readouterr().err
+    strict_quality_report = json.loads(
+        strict_quality_report_path.read_text(encoding="utf-8")
+    )
+    assert strict_quality_report["quality_status"] == "fail"
+    assert strict_quality_report["provider_timestamp_after_as_of_count"] == 1
+    assert strict_quality_report[
+        "breadth_universe_as_of_after_observation_count"
+    ] == 1
+
+    clean = pd.read_csv(input_csv)
+    clean["provider_timestamp"] = [
+        "2025-01-02T23:00:00Z",
+        "2025-01-03T23:00:00Z",
+        "2025-01-06T23:00:00Z",
+        "2025-01-07T23:00:00Z",
+    ]
+    clean["breadth_universe_as_of"] = [
+        "2025-01-02",
+        "2025-01-03",
+        "2025-01-06",
+        "2025-01-07",
+    ]
+    clean.to_csv(input_csv, index=False)
+
+    ok_result = export_us_equity_context_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(ok_output_csv),
+            "--quality-report",
+            str(ok_quality_report_path),
+            "--as-of",
+            "2025-01-07",
+            "--require-point-in-time-metadata",
+        ]
+    )
+
+    assert ok_result == 0
+    ok_quality_report = json.loads(ok_quality_report_path.read_text(encoding="utf-8"))
+    assert ok_quality_report["quality_status"] == "pass"
+    assert ok_quality_report["failure_reasons"] == []
+    assert ok_quality_report["warning_reasons"] == []
 
 
 def test_research_export_validator_rejects_checksum_mismatch(tmp_path) -> None:

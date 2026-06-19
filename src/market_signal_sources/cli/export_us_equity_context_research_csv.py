@@ -33,9 +33,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cape_percentile_column=args.cape_percentile_column,
                 vix_percentile_column=args.vix_percentile_column,
                 breadth_column=args.breadth_column,
+                provider_timestamp_column=args.provider_timestamp_column,
+                breadth_universe_snapshot_column=(
+                    args.breadth_universe_snapshot_column
+                ),
+                breadth_universe_as_of_column=args.breadth_universe_as_of_column,
+                require_point_in_time_metadata=args.require_point_in_time_metadata,
                 min_history_rows=args.min_history,
                 max_allowed_gap_days=args.max_allowed_gap_days,
             )
+            if (
+                args.require_point_in_time_metadata
+                and quality_report["quality_status"] == "fail"
+            ):
+                raise ValueError(
+                    "US equity context availability report failed: "
+                    + ",".join(quality_report["failure_reasons"])
+                )
         output = build_nasdaq_sp500_context_frame(
             input_frame,
             as_of=args.as_of,
@@ -108,6 +122,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default="breadth_above_sma200_pct",
     )
     parser.add_argument("--provider-timestamp-column", default="provider_timestamp")
+    parser.add_argument(
+        "--breadth-universe-snapshot-column",
+        default="breadth_universe_snapshot_id",
+    )
+    parser.add_argument(
+        "--breadth-universe-as-of-column",
+        default="breadth_universe_as_of",
+    )
+    parser.add_argument(
+        "--require-point-in-time-metadata",
+        action="store_true",
+        help=(
+            "Fail the availability report when provider timestamp or breadth "
+            "universe point-in-time metadata is missing."
+        ),
+    )
     parser.add_argument(
         "--passthrough-columns",
         default="QQQ,SPY",

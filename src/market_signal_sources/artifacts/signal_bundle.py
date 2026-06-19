@@ -139,6 +139,7 @@ def build_btc_cycle_signal_bundle(
         compatible_profiles=(
             "us_equity:ibit_smart_dca",
             "research:ibit_btc_ahr999_precomputed",
+            "research:ibit_btc_ahr999_helper_precomputed_variants",
             "research:ibit_btc_ahr999_mayer_precomputed",
             "research:ibit_btc_ahr999_mayer_precomputed_variants",
         ),

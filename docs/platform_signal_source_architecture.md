@@ -97,9 +97,10 @@ credential paths, or service lifecycle ownership.
 6. Validate the manifest or index with the target consumer identifier. This
    checks both `consumer_contract.compatible_profiles` membership and required
    indicator field coverage.
-   `us_equity:ibit_smart_dca` currently requires only `ahr999`; Mayer/SMA fields
-   and deterministic BTC research helpers remain available through research
-   consumers such as `research:ibit_btc_ahr999_mayer_precomputed_variants`.
+   `us_equity:ibit_smart_dca` currently requires only `ahr999`; deterministic
+   BTC research helpers remain available through research consumers such as
+   `research:ibit_btc_ahr999_helper_precomputed_variants` and
+   `research:ibit_btc_ahr999_mayer_precomputed_variants`.
    The manifest and index also carry `compatible_profiles`, and validation
    rejects profile drift across index, manifest, and bundle.
 7. Publish the source family catalog and the consumer contract registry with
@@ -172,6 +173,24 @@ same `derived_indicators` envelope as BTC cycle signals, with the stable symbol
 `breadth_above_sma200_pct`. Its initial consumer is
 `research:nasdaq_sp500_external_context_precomputed`, so it supports offline
 Nasdaq/S&P smart-DCA research before any runtime profile depends on it.
+
+That family also carries source-profile metadata:
+
+- `fred.vixcls` produces `vix_percentile` from FRED `VIXCLS`; research should pin
+  the downloaded CSV, `as_of`, and percentile lookback, and should use at least a
+  T+1 execution lag.
+- `shiller.cape_monthly` produces `cape_percentile` from a preserved Shiller
+  CAPE download snapshot. CAPE is monthly and revision-prone, so daily timing
+  must be modeled as a low-frequency valuation input, not a same-day signal.
+- `index_breadth.point_in_time_vendor` produces `breadth_above_sma200_pct`.
+  Current-constituent backfills are not accepted because they introduce
+  survivorship bias; use point-in-time constituents or an auditable historical
+  breadth index.
+
+The US equity context availability report records missing provider timestamps,
+provider timestamps after `as_of`, missing breadth universe snapshot ids, and
+breadth universe dates after the observation date. Strict research exports can
+turn missing point-in-time metadata from warnings into failures.
 
 New transforms should reuse the generic `derived_indicators` bundle builder for
 the artifact envelope, then keep market-specific calculations inside `derived.*`
