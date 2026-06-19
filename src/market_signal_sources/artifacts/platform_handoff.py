@@ -46,6 +46,7 @@ def write_platform_signal_handoff_index(
     generated_at: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Write a platform handoff index for selecting dated handoff manifests."""
 
@@ -58,6 +59,7 @@ def write_platform_signal_handoff_index(
             index_root=index_root,
             require_all_known_families=require_all_known_families,
             require_all_known_consumers=require_all_known_consumers,
+            require_runtime_consumer_coverage=require_runtime_consumer_coverage,
         )
         for handoff_manifest in handoff_manifests
     ]
@@ -85,6 +87,7 @@ def write_platform_signal_handoff_index(
         target_path,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
 
 
@@ -95,6 +98,7 @@ def upsert_platform_signal_handoff_index(
     generated_at: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Add or replace one handoff manifest entry in a platform handoff index."""
 
@@ -117,6 +121,7 @@ def upsert_platform_signal_handoff_index(
         index_root=index_root,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
     entries[_index_entry_identity(new_entry)] = Path(handoff_manifest)
     return write_platform_signal_handoff_index(
@@ -125,6 +130,7 @@ def upsert_platform_signal_handoff_index(
         generated_at=generated_at,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
 
 
@@ -137,6 +143,7 @@ def validate_platform_signal_handoff_index(
     accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
 ) -> dict[str, Any]:
     """Validate a platform handoff index and resolve the latest matching entry."""
 
@@ -156,6 +163,7 @@ def validate_platform_signal_handoff_index(
         consumer=consumer,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
         expected_canonical_input=expected_canonical_input,
         accepted_freshness_statuses=accepted_freshness_statuses,
     )
@@ -208,6 +216,7 @@ def write_platform_signal_handoff_manifest(
     consumer: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
     expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
     accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
 ) -> dict[str, Any]:
@@ -241,6 +250,10 @@ def write_platform_signal_handoff_manifest(
     source_catalog_summary = validate_signal_source_family_catalog_manifest(
         source_catalog_manifest_path,
         require_all_known_families=require_all_known_families,
+    )
+    _require_runtime_consumer_coverage(
+        source_catalog_summary,
+        required=require_runtime_consumer_coverage,
     )
     consumer_registry_summary = validate_consumer_contract_registry_manifest(
         consumer_registry_manifest_path,
@@ -281,6 +294,7 @@ def write_platform_signal_handoff_manifest(
         consumer=consumer,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
         expected_canonical_input=expected_canonical_input,
         accepted_freshness_statuses=accepted_freshness_statuses,
     )
@@ -292,6 +306,7 @@ def validate_platform_signal_handoff_manifest(
     consumer: str | None = None,
     require_all_known_families: bool = False,
     require_all_known_consumers: bool = False,
+    require_runtime_consumer_coverage: bool = False,
     expected_canonical_input: str = CANONICAL_INPUT_DERIVED_INDICATORS,
     accepted_freshness_statuses: Iterable[str] = (FRESHNESS_FRESH,),
 ) -> dict[str, Any]:
@@ -344,6 +359,10 @@ def validate_platform_signal_handoff_manifest(
         source_catalog_manifest_path,
         require_all_known_families=require_all_known_families,
     )
+    _require_runtime_consumer_coverage(
+        source_catalog_summary,
+        required=require_runtime_consumer_coverage,
+    )
     consumer_registry_summary = validate_consumer_contract_registry_manifest(
         consumer_registry_manifest_path,
         require_all_known_consumers=require_all_known_consumers,
@@ -384,6 +403,7 @@ def _platform_handoff_index_entry(
     index_root: Path,
     require_all_known_families: bool,
     require_all_known_consumers: bool,
+    require_runtime_consumer_coverage: bool,
 ) -> dict[str, Any]:
     resolved_handoff_path = handoff_manifest_path.resolve()
     try:
@@ -396,6 +416,7 @@ def _platform_handoff_index_entry(
         resolved_handoff_path,
         require_all_known_families=require_all_known_families,
         require_all_known_consumers=require_all_known_consumers,
+        require_runtime_consumer_coverage=require_runtime_consumer_coverage,
     )
     return {
         "handoff_manifest_path": relative_handoff_path.as_posix(),
@@ -416,6 +437,7 @@ def _platform_handoff_index_entry(
             "all_consumer_contracts_satisfied"
         ],
         "all_known_consumers_present": summary["all_known_consumers_present"],
+        "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
     }
 
 
@@ -463,6 +485,13 @@ def _validate_platform_handoff_index_shape(index: Mapping[str, Any]) -> None:
         ):
             raise ValueError(
                 "platform handoff index entry matched_source_families must be a list"
+            )
+        if "all_runtime_consumers_covered" in raw_entry and not isinstance(
+            raw_entry.get("all_runtime_consumers_covered"),
+            bool,
+        ):
+            raise ValueError(
+                "platform handoff index entry all_runtime_consumers_covered must be a bool"
             )
 
 
@@ -563,6 +592,7 @@ def _validate_index_entry_summary_consistency(
     optional_expected_values = {
         "matched_source_families": list(summary["matched_source_families"]),
         "matched_source_family_count": summary["matched_source_family_count"],
+        "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
     }
     for field, expected in optional_expected_values.items():
         if field in entry and entry.get(field) != expected:
@@ -659,6 +689,9 @@ def _platform_handoff_manifest(
         "all_consumer_contracts_satisfied": source_catalog_summary[
             "all_consumer_contracts_satisfied"
         ],
+        "all_runtime_consumers_covered": source_catalog_summary[
+            "all_runtime_consumers_covered"
+        ],
         "consumer_contract_count": consumer_registry_summary["consumer_count"],
         "consumer_contracts": list(consumer_registry_summary["consumers"]),
         "all_known_consumers_present": consumer_registry_summary[
@@ -708,6 +741,9 @@ def _platform_handoff_summary(
         ],
         "all_consumer_contracts_satisfied": source_catalog_summary[
             "all_consumer_contracts_satisfied"
+        ],
+        "all_runtime_consumers_covered": source_catalog_summary[
+            "all_runtime_consumers_covered"
         ],
         "consumer_contract_count": consumer_registry_summary["consumer_count"],
         "consumer_contracts": consumer_registry_summary["consumers"],
@@ -845,6 +881,18 @@ def _validate_registry_consumer(
         )
 
 
+def _require_runtime_consumer_coverage(
+    source_catalog_summary: Mapping[str, Any],
+    *,
+    required: bool,
+) -> None:
+    if (
+        required
+        and source_catalog_summary.get("all_runtime_consumers_covered") is not True
+    ):
+        raise ValueError("source family catalog runtime consumer coverage is incomplete")
+
+
 def _validate_signal_bundle_manifest_for_handoff(
     path: Path,
     *,
@@ -923,6 +971,13 @@ def _validate_platform_handoff_shape(payload: object) -> None:
         list,
     ):
         raise ValueError("platform handoff matched_source_families must be a list")
+    if "all_runtime_consumers_covered" in payload and not isinstance(
+        payload["all_runtime_consumers_covered"],
+        bool,
+    ):
+        raise ValueError(
+            "platform handoff all_runtime_consumers_covered must be a bool"
+        )
 
 
 def _validate_linked_sha256(path: Path, expected: str, *, field: str) -> None:
@@ -962,6 +1017,7 @@ def _validate_summary_consistency(
     optional_expected_values = {
         "matched_source_family_count": summary["matched_source_family_count"],
         "matched_source_families": list(summary["matched_source_families"]),
+        "all_runtime_consumers_covered": summary["all_runtime_consumers_covered"],
     }
     for field, expected in optional_expected_values.items():
         if field in payload and payload.get(field) != expected:

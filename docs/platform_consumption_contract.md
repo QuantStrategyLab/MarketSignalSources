@@ -409,7 +409,8 @@ python -m market_signal_sources.cli.build_platform_handoff \
   --consumer us_equity:ibit_smart_dca \
   --as-of 2026-06-19 \
   --require-all-known-families \
-  --require-all-known-consumers
+  --require-all-known-consumers \
+  --require-runtime-consumer-coverage
 ```
 
 For research handoff:
@@ -433,7 +434,8 @@ The source-family catalog validation also returns
 `runtime_consumer_coverage`; platform deploy checks should require
 `all_runtime_consumers_covered=true` before treating adapter config-set coverage
 as complete. The CLI flag `--require-runtime-consumer-coverage` turns that
-summary into a failing validation gate.
+summary into a failing validation gate, including through platform handoff
+manifest and index validation.
 
 ## Compatibility And Risk
 

@@ -235,7 +235,8 @@ each known non-research consumer, such as `us_equity:ibit_smart_dca`, back to
 the source families that can publish runtime handoffs for it. A new runtime
 consumer should not be considered deployable until this coverage reports
 `all_runtime_consumers_covered=true`; CI can enforce this through
-`--require-runtime-consumer-coverage`.
+`--require-runtime-consumer-coverage` on catalog validation and platform
+handoff publication or validation.
 
 The first US equity family is `us_equity.nasdaq_sp500_context_daily`. It uses the
 same `derived_indicators` envelope as BTC cycle signals, with the stable symbol

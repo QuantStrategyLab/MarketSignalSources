@@ -1606,6 +1606,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         consumer="us_equity:ibit_smart_dca",
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
 
     assert summary["schema_version"] == "market_signal_platform_handoff.v1"
@@ -1624,6 +1625,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert summary["consumer_contract_count"] == 8
     assert summary["all_known_source_families_present"] is True
     assert summary["all_known_consumers_present"] is True
+    assert summary["all_runtime_consumers_covered"] is True
     assert summary["signal_bundle_manifest_sha256"] == _sha256(
         bundle_paths["manifest"]
     )
@@ -1633,8 +1635,10 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         consumer="us_equity:ibit_smart_dca",
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert validation_summary["sha256"] == _sha256(handoff_path)
+    assert validation_summary["all_runtime_consumers_covered"] is True
 
     cli_handoff_path = tmp_path / "cli_platform_handoff.json"
     result = handoff_main(
@@ -1651,6 +1655,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "us_equity:ibit_smart_dca",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
@@ -1658,6 +1663,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     cli_summary = json.loads(capsys.readouterr().out)
     assert cli_summary["path"] == str(cli_handoff_path)
     assert cli_summary["sha256"] == _sha256(cli_handoff_path)
+    assert cli_summary["all_runtime_consumers_covered"] is True
 
     validate_result = handoff_main(
         [
@@ -1667,12 +1673,14 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "us_equity:ibit_smart_dca",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
     assert validate_result == 0
     cli_validate_summary = json.loads(capsys.readouterr().out)
     assert cli_validate_summary["sha256"] == _sha256(cli_handoff_path)
+    assert cli_validate_summary["all_runtime_consumers_covered"] is True
 
     index_path = tmp_path / "platform_handoff_index.json"
     index_summary = write_platform_signal_handoff_index(
@@ -1680,6 +1688,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         [handoff_path],
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert index_summary["index_schema_version"] == (
         "market_signal_platform_handoff_index.v1"
@@ -1689,6 +1698,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     )
     assert index_summary["index_handoff_count"] == 1
     assert index_summary["handoff_manifest_path"] == str(handoff_path.resolve())
+    assert index_summary["all_runtime_consumers_covered"] is True
+    index_payload = json.loads(index_path.read_text(encoding="utf-8"))
+    assert index_payload["handoffs"][0]["all_runtime_consumers_covered"] is True
     assert resolve_platform_signal_handoff_manifest_from_index(
         index_path,
         consumer="us_equity:ibit_smart_dca",
@@ -1700,19 +1712,23 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
         cli_handoff_path,
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert upsert_summary["index_handoff_count"] == 1
     assert upsert_summary["handoff_manifest_path"] == str(cli_handoff_path.resolve())
+    assert upsert_summary["all_runtime_consumers_covered"] is True
     validation_index_summary = validate_platform_signal_handoff_index(
         index_path,
         consumer="us_equity:ibit_smart_dca",
         as_of="2025-09-18",
         require_all_known_families=True,
         require_all_known_consumers=True,
+        require_runtime_consumer_coverage=True,
     )
     assert validation_index_summary["handoff_manifest_sha256"] == _sha256(
         cli_handoff_path
     )
+    assert validation_index_summary["all_runtime_consumers_covered"] is True
 
     cli_index_path = tmp_path / "cli_platform_handoff_index.json"
     index_result = handoff_main(
@@ -1723,6 +1739,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             str(handoff_path),
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
@@ -1730,6 +1747,9 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     cli_index_summary = json.loads(capsys.readouterr().out)
     assert cli_index_summary["index_path"] == str(cli_index_path.resolve())
     assert cli_index_summary["index_handoff_count"] == 1
+    assert cli_index_summary["all_runtime_consumers_covered"] is True
+    cli_index_payload = json.loads(cli_index_path.read_text(encoding="utf-8"))
+    assert cli_index_payload["handoffs"][0]["all_runtime_consumers_covered"] is True
 
     validate_index_result = handoff_main(
         [
@@ -1741,6 +1761,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
             "2025-09-18",
             "--require-all-known-families",
             "--require-all-known-consumers",
+            "--require-runtime-consumer-coverage",
             "--pretty",
         ]
     )
@@ -1749,6 +1770,7 @@ def test_platform_signal_handoff_manifest_pins_all_platform_inputs(
     assert cli_validate_index_summary["handoff_manifest_sha256"] == _sha256(
         handoff_path
     )
+    assert cli_validate_index_summary["all_runtime_consumers_covered"] is True
 
     consumption_summary = audit_signal_consumption(
         platform_handoff_manifest=handoff_path,

@@ -34,6 +34,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 as_of=args.as_of,
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
         elif args.output_index is not None:
             if (
@@ -51,6 +54,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.handoff_manifests,
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
         elif args.upsert_index is not None:
             if _has_single_manifest_inputs(args) or args.validate_manifest is not None:
@@ -66,6 +72,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.handoff_manifests[0],
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
         elif args.validate_manifest is not None:
             if (
@@ -84,6 +93,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 consumer=args.consumer,
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
         else:
             if args.handoff_manifests:
@@ -111,6 +123,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 consumer=args.consumer,
                 require_all_known_families=args.require_all_known_families,
                 require_all_known_consumers=args.require_all_known_consumers,
+                require_runtime_consumer_coverage=(
+                    args.require_runtime_consumer_coverage
+                ),
             )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -170,6 +185,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--require-all-known-consumers",
         action="store_true",
         help="Require the consumer contract registry to include every known consumer.",
+    )
+    parser.add_argument(
+        "--require-runtime-consumer-coverage",
+        action="store_true",
+        help="Require the source family catalog to cover every runtime consumer.",
     )
     parser.add_argument("--pretty", action="store_true")
     return parser
