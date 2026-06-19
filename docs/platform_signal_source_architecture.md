@@ -100,10 +100,11 @@ credential paths, or service lifecycle ownership.
    their manifests.
 8. Strategy CI validates the signal manifest, source family catalog manifest,
    and consumer contract registry manifest before allowing a strategy config to
-   reference the artifact. Strategy repositories should also compare the
-   registry's consumer entries with their own expected consumer identifiers and
-   required fields, so a hash-valid registry that omits the target strategy still
-   fails before release.
+   reference the artifact. Strategy repositories should also compare the source
+   catalog's transform and `compatible_profiles`, plus the registry's consumer
+   entries, with their own expected consumer identifiers and required fields, so
+   a hash-valid catalog or registry that omits the target strategy still fails
+   before release.
 9. Runtime loads the validated bundle and injects only `derived_indicators`.
 
 For research-only work, export `research_export.v1` CSVs and their manifests.
