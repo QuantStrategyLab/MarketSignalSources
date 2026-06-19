@@ -120,6 +120,10 @@ credential paths, or service lifecycle ownership.
 For research-only work, export `research_export.v1` CSVs and their manifests.
 Research tooling should depend on those CSV manifests rather than on runtime
 bundle files.
+The BTC path uses `artifact_type=btc_cycle_research_csv`; the Nasdaq/S&P
+external context path uses `artifact_type=us_equity_context_research_csv` and
+`transform=us_equity.nasdaq_sp500.context.v1`. Both are hash-pinned offline
+research inputs, not runtime platform injection contracts.
 
 ## Multi-Market Extension
 

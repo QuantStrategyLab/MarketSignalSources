@@ -67,6 +67,9 @@ from market_signal_sources.artifacts.validation import (
 from market_signal_sources.cli.build_btc_cycle_bundle import main as build_main
 from market_signal_sources.cli.build_platform_handoff import main as handoff_main
 from market_signal_sources.cli.export_btc_cycle_research_csv import main as export_main
+from market_signal_sources.cli.export_us_equity_context_research_csv import (
+    main as export_us_equity_context_main,
+)
 from market_signal_sources.cli.list_consumer_contracts import main as list_contracts_main
 from market_signal_sources.cli.list_signal_source_families import (
     main as list_families_main,
@@ -1540,6 +1543,67 @@ def test_cli_exports_btc_cycle_research_csv(tmp_path, capsys) -> None:
     cli_summary = json.loads(capsys.readouterr().out)
     assert cli_summary["artifact_type"] == "btc_cycle_research_csv"
     assert cli_summary["columns"][-1] == "cycle_indicator_source"
+
+
+def test_cli_exports_us_equity_context_research_csv(tmp_path, capsys) -> None:
+    dates = pd.date_range("2025-01-02", periods=5, freq="B")
+    input_csv = tmp_path / "us_equity_context_raw.csv"
+    output_csv = tmp_path / "research" / "us_equity_context.csv"
+    manifest_path = tmp_path / "research" / "us_equity_context.manifest.json"
+    pd.DataFrame(
+        {
+            "date": dates.date,
+            "QQQ": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "SPY": [90.0, 91.0, 92.0, 93.0, 94.0],
+            "cape_percentile": [0.70, 0.80, 0.90, 0.85, 0.88],
+            "vix_percentile": [0.20, 0.40, 0.85, 0.75, 0.65],
+            "breadth_above_sma200_pct": [0.60, 0.50, 0.35, 0.45, 0.40],
+        }
+    ).to_csv(input_csv, index=False)
+
+    result = export_us_equity_context_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--manifest-path",
+            str(manifest_path),
+            "--as-of",
+            "2025-01-07",
+            "--pretty",
+        ]
+    )
+
+    assert result == 0
+    summary = json.loads(capsys.readouterr().out)
+    exported = pd.read_csv(output_csv)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert summary["artifact_type"] == "us_equity_context_research_csv"
+    assert summary["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert summary["row_count"] == 4
+    assert summary["last_date"] == "2025-01-07"
+    assert manifest["artifact_type"] == "us_equity_context_research_csv"
+    assert manifest["transform"] == "us_equity.nasdaq_sp500.context.v1"
+    assert manifest["input_csv"]["sha256"] == _sha256(input_csv)
+    assert manifest["output_csv"]["sha256"] == _sha256(output_csv)
+    assert list(exported.columns) == [
+        "date",
+        "QQQ",
+        "SPY",
+        "cape_percentile",
+        "vix_percentile",
+        "breadth_above_sma200_pct",
+        "provider_timestamp",
+    ]
+
+    validation_summary = validate_research_export_manifest(
+        manifest_path,
+        expected_artifact_type="us_equity_context_research_csv",
+        expected_transform="us_equity.nasdaq_sp500.context.v1",
+    )
+    assert validation_summary["row_count"] == 4
+    assert validation_summary["columns"] == tuple(exported.columns)
 
 
 def test_research_export_validator_rejects_checksum_mismatch(tmp_path) -> None:

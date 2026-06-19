@@ -19,6 +19,7 @@ def write_research_export_manifest(
     output_csv_path: str | PathLike[str],
     output_frame: pd.DataFrame,
     input_csv_path: str | PathLike[str],
+    artifact_type: str = "btc_cycle_research_csv",
     transform: str,
     source_version: str,
     as_of: str | None,
@@ -30,7 +31,7 @@ def write_research_export_manifest(
     input_path = Path(input_csv_path)
     manifest = {
         "schema_version": RESEARCH_EXPORT_SCHEMA_VERSION,
-        "artifact_type": "btc_cycle_research_csv",
+        "artifact_type": str(artifact_type),
         "transform": str(transform),
         "source_version": str(source_version),
         "as_of": None if as_of is None else pd.Timestamp(as_of).normalize().date().isoformat(),

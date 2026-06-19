@@ -277,6 +277,24 @@ python -m market_signal_sources.cli.validate_research_export \
   --pretty
 ```
 
+Export a Nasdaq/S&P external context research CSV from a local, already
+point-in-time input file:
+
+```bash
+python -m market_signal_sources.cli.export_us_equity_context_research_csv \
+  --input-csv ./us_equity_context_daily.csv \
+  --output-csv ./data/output/research/us_equity_context.csv \
+  --manifest-path ./data/output/research/us_equity_context.manifest.json \
+  --as-of 2026-06-19 \
+  --pretty
+```
+
+The export normalizes `cape_percentile`, `vix_percentile`, and
+`breadth_above_sma200_pct`, and optionally passes through `QQQ` / `SPY` columns
+for strategy research joins. Its manifest uses
+`artifact_type=us_equity_context_research_csv` and
+`transform=us_equity.nasdaq_sp500.context.v1`.
+
 Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
 and confirms the output CSV header, row count, first date, and last date match
 the manifest.
