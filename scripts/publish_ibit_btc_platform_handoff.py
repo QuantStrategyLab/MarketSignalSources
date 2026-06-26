@@ -10,8 +10,10 @@ import urllib.request
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-BINANCE_BTCUSDT_DAILY_URL = (
-    "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=800"
+BINANCE_BTCUSDT_DAILY_URLS = (
+    "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=800",
+    "https://api.binance.us/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=800",
+    "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=800",
 )
 DEFAULT_CONSUMER = "us_equity:ibit_smart_dca"
 DEFAULT_STRATEGY = "ibit_smart_dca"
@@ -35,17 +37,11 @@ def resolve_as_of(*, csv_path: Path, requested: str | None, today: date | None =
     return rows[-1]
 
 
-def fetch_binance_btc_daily_csv(output_path: Path) -> int:
+def fetch_binance_btc_daily_csv(output_path: Path) -> tuple[int, str]:
     """Download BTCUSDT daily OHLCV from Binance public API into a local CSV."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with urllib.request.urlopen(BINANCE_BTCUSDT_DAILY_URL, timeout=30) as response:
-            payload = json.loads(response.read().decode())
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"failed to download Binance BTCUSDT daily klines: {exc}") from exc
-
-    if not payload:
-        raise RuntimeError("Binance BTCUSDT daily klines response was empty")
+    payload, source_url = _download_binance_btcusdt_daily_klines()
+    provider_name = _provider_name_for_url(source_url)
 
     rows: list[dict[str, object]] = []
     for entry in payload:
@@ -70,7 +66,33 @@ def fetch_binance_btc_daily_csv(output_path: Path) -> int:
         writer.writeheader()
         writer.writerows(rows)
 
-    return len(rows)
+    print(f"downloaded BTCUSDT daily rows from {provider_name}")
+    return len(rows), provider_name
+
+
+def _download_binance_btcusdt_daily_klines() -> tuple[list[object], str]:
+    errors: list[str] = []
+    for url in BINANCE_BTCUSDT_DAILY_URLS:
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                payload = json.loads(response.read().decode())
+        except urllib.error.URLError as exc:
+            errors.append(f"{url}: {exc}")
+            continue
+        if not payload:
+            errors.append(f"{url}: empty response")
+            continue
+        return payload, url
+    joined = "; ".join(errors) or "no Binance endpoints configured"
+    raise RuntimeError(f"failed to download Binance BTCUSDT daily klines: {joined}")
+
+
+def _provider_name_for_url(url: str) -> str:
+    if "binance.vision" in url:
+        return "binance_vision_public"
+    if "binance.us" in url:
+        return "binance_us_public"
+    return "binance_public"
 
 
 def build_ibit_btc_platform_handoff(
@@ -80,6 +102,7 @@ def build_ibit_btc_platform_handoff(
     as_of: str,
     code_commit: str,
     source_version: str,
+    provider: str = "binance_vision_public",
     consumer: str = DEFAULT_CONSUMER,
     strategy: str = DEFAULT_STRATEGY,
 ) -> dict[str, Path]:
@@ -104,7 +127,7 @@ def build_ibit_btc_platform_handoff(
             "--as-of",
             as_of,
             "--provider",
-            "binance_public",
+            provider,
             "--provider-dataset",
             "btcusdt_daily_klines",
             "--source-version",
@@ -222,8 +245,9 @@ def main(argv: list[str] | None = None) -> int:
     input_csv = args.input_csv or (work_dir / "inputs" / "btc_daily.csv")
     code_commit = args.code_commit or __import__("os").environ.get("GITHUB_SHA", "0" * 40)
 
+    provider = "local_csv"
     if args.input_csv is None:
-        row_count = fetch_binance_btc_daily_csv(input_csv)
+        row_count, provider = fetch_binance_btc_daily_csv(input_csv)
         print(f"downloaded {row_count} BTCUSDT daily rows to {input_csv}")
     elif not input_csv.is_file():
         print(f"error: input CSV not found: {input_csv}", file=sys.stderr)
@@ -238,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         as_of=as_of,
         code_commit=code_commit,
         source_version=args.source_version,
+        provider=provider,
         consumer=args.consumer,
         strategy=args.strategy,
     )

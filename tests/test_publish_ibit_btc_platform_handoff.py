@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from scripts.publish_ibit_btc_platform_handoff import (
+    BINANCE_BTCUSDT_DAILY_URLS,
+    _provider_name_for_url,
     default_as_of,
     resolve_as_of,
 )
@@ -54,3 +56,9 @@ def test_resolve_as_of_raises_for_empty_csv(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no dates found"):
         resolve_as_of(csv_path=csv_path, requested="2026-06-25")
+
+
+def test_provider_name_for_url() -> None:
+    assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[0]) == "binance_vision_public"
+    assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[1]) == "binance_us_public"
+    assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[2]) == "binance_public"
