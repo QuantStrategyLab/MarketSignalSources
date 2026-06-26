@@ -1,0 +1,117 @@
+name: Publish Platform Handoffs
+
+on:
+  schedule:
+    # Daily after the prior UTC date's BTC daily close is available.
+    - cron: '15 1 * * *'
+  workflow_dispatch:
+    inputs:
+      execute_publish:
+        description: Upload platform handoffs to GCS. false only builds a GitHub artifact.
+        required: true
+        default: false
+        type: boolean
+      as_of:
+        description: Optional signal as-of date (YYYY-MM-DD).
+        required: false
+        type: string
+      gcs_prefix:
+        description: Optional GCS prefix override for platform handoffs.
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish-ibit-btc-handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'interactivebrokersquant' }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
+      GCS_PREFIX: ${{ inputs.gcs_prefix || vars.MARKET_SIGNAL_GCS_PREFIX || 'gs://qsl-runtime-logs-shared/platform_handoffs' }}
+      EXECUTE_PUBLISH: ${{ github.event_name == 'schedule' && 'true' || inputs.execute_publish }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Authenticate to Google Cloud
+        if: env.EXECUTE_PUBLISH == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        if: env.EXECUTE_PUBLISH == 'true'
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: '>= 416.0.0'
+
+      - name: Build and publish IBIT BTC platform handoff
+        id: publish
+        run: |
+          set -euo pipefail
+          args=(
+            --work-dir data/output
+            --source-version 0.1.1
+            --code-commit "${GITHUB_SHA}"
+            --gcs-prefix "${GCS_PREFIX}"
+          )
+          if [ -n "${{ inputs.as_of }}" ]; then
+            args+=(--as-of "${{ inputs.as_of }}")
+          fi
+          if [ "${EXECUTE_PUBLISH}" = "true" ]; then
+            args+=(--execute)
+          fi
+          python scripts/publish_ibit_btc_platform_handoff.py "${args[@]}"
+          as_of="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          index = json.loads(Path("data/output/platform_handoffs/index.json").read_text(encoding="utf-8"))
+          print(index["handoffs"][-1]["as_of"])
+          PY
+          )"
+          echo "as_of=${as_of}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload generated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-handoffs-ibit-btc-${{ steps.publish.outputs.as_of }}-${{ github.run_id }}
+          path: data/output/platform_handoffs
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Append job summary
+        run: |
+          set -euo pipefail
+          {
+            echo "## Platform handoff publish"
+            echo
+            echo "- consumer: \`us_equity:ibit_smart_dca\`"
+            echo "- as_of: \`${{ steps.publish.outputs.as_of }}\`"
+            echo "- gcs_prefix: \`${GCS_PREFIX}\`"
+            echo "- execute_publish: \`${EXECUTE_PUBLISH}\`"
+            echo
+            echo "Generated files:"
+            find data/output/platform_handoffs -type f | sort | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
