@@ -8,7 +8,7 @@ version = "0.1.1"
 description = "Artifact-first market signal source builders for QuantStrategyLab strategies"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {file = "LICENSE"}
+license = "MIT"
 dependencies = [
   "pandas>=2.0",
 ]
