@@ -9,19 +9,31 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install package and test dependencies
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest
+          python -m pip install -e . pytest ruff build
+
+      - name: Verify dependencies
+        run: python -m pip check
+
+      - name: Ruff
+        run: ruff check .
 
       - name: Run tests
         run: python -m pytest tests -q
+
+      - name: Build package
+        run: python -m build
