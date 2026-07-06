@@ -1,5 +1,14 @@
 # MarketSignalSources
 
+
+## QSL architecture role
+
+- **Layer**: `strategy-library`.
+- **Responsibility**: artifact-first market signal source builders.
+- **Owns**: market signal bundles and handoff artifacts.
+- **Consumes**: public/market inputs and downstream strategy consumers.
+- **Must not**: submit orders or mutate platform runtime settings.
+
 Artifact-first market signal source builders for QuantStrategyLab strategy platforms.
 
 ## Installation

@@ -1,5 +1,14 @@
 # MarketSignalSources
 
+
+## QSL 架构角色
+
+- **层级**：`策略库`。
+- **职责**：artifact-first 市场信号源构建器。
+- **事实源/归属**：market signal bundles 与 handoff artifacts。
+- **消费对象**：公开/市场输入和下游策略消费者。
+- **禁止事项**：下单或修改平台 runtime settings。
+
 QuantStrategyLab 策略平台的市场信号源构建工具包，采用 artifact-first 设计。
 
 ## 安装
