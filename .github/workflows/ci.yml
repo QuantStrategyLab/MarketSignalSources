@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest ruff build
+          python -m pip install -e . pytest 'ruff==0.15.22' build
 
       - name: Verify dependencies
         run: python -m pip check
