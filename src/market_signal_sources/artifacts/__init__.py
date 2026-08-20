@@ -95,6 +95,14 @@ from .publication import (
     MARKET_SIGNAL_PLATFORM_PUBLICATION_SCHEMA_VERSION,
     publish_platform_signal_handoff,
 )
+from .point_in_time_universe import (
+    POINT_IN_TIME_UNIVERSE_SCHEMA,
+    PointInTimeUniverseError,
+    build_point_in_time_universe_snapshot,
+    calculate_point_in_time_universe_sha256,
+    validate_point_in_time_universe_snapshot,
+    validate_universe_snapshot_for_decision,
+)
 from .validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
     SignalBundleValidationError,
@@ -130,6 +138,7 @@ __all__ = [
     "MARKET_SIGNAL_RUNTIME_INJECTION_PLAN_SCHEMA_VERSION",
     "MARKET_SIGNAL_RUNTIME_PLAN_AUDIT_MATCH_SCHEMA_VERSION",
     "MARKET_SIGNAL_PLATFORM_PUBLICATION_SCHEMA_VERSION",
+    "POINT_IN_TIME_UNIVERSE_SCHEMA",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
@@ -140,11 +149,13 @@ __all__ = [
     "SignalConsumerContractError",
     "SignalBundleValidationError",
     "QualityReportValidationError",
+    "PointInTimeUniverseError",
     "build_btc_cycle_signal_bundle",
     "build_daily_technical_signal_bundle",
     "build_derived_indicator_signal_bundle",
     "build_semiconductor_rotation_signal_bundle",
     "build_ohlcv_quality_report",
+    "build_point_in_time_universe_snapshot",
     "consumer_contract_for",
     "audit_signal_consumption",
     "compatible_profiles_for_signal_source_family",
@@ -180,6 +191,7 @@ __all__ = [
     "validate_ohlcv_quality_report_file",
     "validate_platform_signal_handoff_index",
     "validate_platform_signal_handoff_manifest",
+    "validate_point_in_time_universe_snapshot",
     "validate_consumption_audit_file",
     "validate_runtime_adapter_config",
     "validate_runtime_adapter_config_set_files",
@@ -189,6 +201,7 @@ __all__ = [
     "validate_runtime_signal_injection_plan_file",
     "validate_runtime_signal_injection_plan_matches_audit",
     "write_research_export_manifest",
+    "calculate_point_in_time_universe_sha256",
     "write_research_signal_handoff_manifest",
     "write_consumption_audit_artifact",
     "write_runtime_signal_injection_plan_artifact",
@@ -205,4 +218,5 @@ __all__ = [
     "upsert_platform_signal_handoff_index",
     "publish_platform_signal_handoff",
     "runtime_signal_injection_plan",
+    "validate_universe_snapshot_for_decision",
 ]
