@@ -110,6 +110,13 @@ from .historical_price_panel import (
     calculate_historical_price_panel_sha256,
     validate_historical_price_panel,
 )
+from .historical_combo_p1_input import (
+    HISTORICAL_COMBO_P1_INPUT_SCHEMA,
+    HistoricalComboP1InputError,
+    build_historical_combo_p1_input,
+    calculate_historical_combo_p1_input_sha256,
+    validate_historical_combo_p1_input,
+)
 from .validation import (
     REQUIRED_INDICATOR_FIELDS_BY_CONSUMER,
     SignalBundleValidationError,
@@ -147,6 +154,7 @@ __all__ = [
     "MARKET_SIGNAL_PLATFORM_PUBLICATION_SCHEMA_VERSION",
     "POINT_IN_TIME_UNIVERSE_SCHEMA",
     "HISTORICAL_PRICE_PANEL_SCHEMA",
+    "HISTORICAL_COMBO_P1_INPUT_SCHEMA",
     "RESEARCH_EXPORT_SCHEMA_VERSION",
     "SIGNAL_OWNERSHIP_MATRIX_SCHEMA_VERSION",
     "SIGNAL_SOURCE_FAMILY_CATALOG_MANIFEST_SCHEMA_VERSION",
@@ -159,6 +167,7 @@ __all__ = [
     "QualityReportValidationError",
     "PointInTimeUniverseError",
     "HistoricalPricePanelError",
+    "HistoricalComboP1InputError",
     "build_btc_cycle_signal_bundle",
     "build_daily_technical_signal_bundle",
     "build_derived_indicator_signal_bundle",
@@ -166,6 +175,7 @@ __all__ = [
     "build_ohlcv_quality_report",
     "build_point_in_time_universe_snapshot",
     "build_historical_price_panel",
+    "build_historical_combo_p1_input",
     "consumer_contract_for",
     "audit_signal_consumption",
     "compatible_profiles_for_signal_source_family",
@@ -203,6 +213,7 @@ __all__ = [
     "validate_platform_signal_handoff_manifest",
     "validate_point_in_time_universe_snapshot",
     "validate_historical_price_panel",
+    "validate_historical_combo_p1_input",
     "validate_consumption_audit_file",
     "validate_runtime_adapter_config",
     "validate_runtime_adapter_config_set_files",
@@ -214,6 +225,7 @@ __all__ = [
     "write_research_export_manifest",
     "calculate_point_in_time_universe_sha256",
     "calculate_historical_price_panel_sha256",
+    "calculate_historical_combo_p1_input_sha256",
     "write_research_signal_handoff_manifest",
     "write_consumption_audit_artifact",
     "write_runtime_signal_injection_plan_artifact",
