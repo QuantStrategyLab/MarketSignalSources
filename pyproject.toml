@@ -34,6 +34,7 @@ publish-platform-signal-handoff = "market_signal_sources.cli.publish_platform_si
 validate-quality-report = "market_signal_sources.cli.validate_quality_report:main"
 validate-research-export = "market_signal_sources.cli.validate_research_export:main"
 validate-signal-bundle = "market_signal_sources.cli.validate_signal_bundle:main"
+seal-historical-combo-p1-root = "market_signal_sources.cli.seal_historical_combo_p1_root:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
