@@ -26,13 +26,18 @@ def local_csv_provider_metadata(
     provider_dataset: str = "btc_usd_daily_ohlcv",
     license_scope: str = "internal_runtime",
 ) -> LocalCsvProviderMetadata:
-    """Return auditable provider metadata for a local CSV source artifact."""
+    """Return auditable provider metadata for a local CSV source artifact.
 
-    normalized_as_of = pd.Timestamp(as_of).normalize().date().isoformat()
+    ``provider_timestamp`` binds to the actual source end date present in the
+    CSV (after ``as_of`` filtering), not to the caller-supplied ``as_of`` clock.
+    """
+
+    frame = load_ohlcv_csv(path, as_of=as_of)
+    source_end = pd.Timestamp(frame.iloc[-1]["date"]).normalize().date().isoformat()
     return LocalCsvProviderMetadata(
         provider=_non_empty(provider, "provider"),
         provider_dataset=_non_empty(provider_dataset, "provider_dataset"),
-        provider_timestamp=f"{normalized_as_of}T00:00:00Z",
+        provider_timestamp=f"{source_end}T00:00:00Z",
         raw_artifact_sha256=_sha256_file(Path(path)),
         license_scope=_non_empty(license_scope, "license_scope"),
     )

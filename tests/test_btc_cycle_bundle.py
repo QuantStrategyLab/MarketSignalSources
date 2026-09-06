@@ -3966,3 +3966,133 @@ def test_validator_rejects_index_compatible_profile_mismatch(tmp_path) -> None:
 
     with pytest.raises(SignalBundleValidationError, match="compatible_profiles"):
         validate_signal_bundle_index(paths["index"])
+
+
+def test_local_csv_provider_timestamp_binds_source_end_not_as_of(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    frame = _btc_frame(rows=220)
+    # Source ends well before a later wall-clock as_of.
+    frame.to_csv(input_csv, index=False)
+    source_end = pd.Timestamp(frame.iloc[-1]["date"]).date().isoformat()
+
+    metadata = local_csv_provider_metadata(
+        input_csv,
+        as_of="2026-09-06",
+        provider="local_csv",
+        provider_dataset="btc_usd_daily_ohlcv",
+    )
+    quality = build_ohlcv_quality_report(input_csv, as_of="2026-09-06")
+
+    assert source_end != "2026-09-06"
+    assert metadata.provider_timestamp == f"{source_end}T00:00:00Z"
+    assert metadata.provider_timestamp == f"{quality['last_date']}T00:00:00Z"
+    assert quality["source_available_at"] == f"{source_end}T00:00:00Z"
+
+
+def test_stale_complete_local_csv_cannot_claim_fresh_against_wall_clock(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    metadata = local_csv_provider_metadata(input_csv, as_of="2026-09-06")
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=metadata.raw_artifact_sha256,
+        generated_at="2026-09-06T12:00:00Z",
+        provider_timestamp=metadata.provider_timestamp,
+        freshness_status="fresh",
+    )
+
+    with pytest.raises(SignalBundleValidationError, match="freshness"):
+        validate_signal_bundle(bundle, now="2026-09-06T12:00:00Z")
+
+
+def test_fresh_provider_timestamp_within_max_age_is_accepted() -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T12:00:00Z",
+        provider_timestamp="2025-09-17T00:00:00Z",
+        freshness_status="fresh",
+    )
+    validate_signal_bundle(bundle, now="2025-09-17T12:00:00Z")
+
+
+@pytest.mark.parametrize(
+    ("now", "should_pass"),
+    [
+        ("2025-09-18T12:00:00Z", True),   # exactly 36h
+        ("2025-09-18T12:00:01Z", False),  # just over 36h
+    ],
+)
+def test_freshness_max_age_hours_boundary(now: str, should_pass: bool) -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+        provider_timestamp="2025-09-17T00:00:00Z",
+        freshness_status="fresh",
+    )
+    if should_pass:
+        validate_signal_bundle(bundle, now=now)
+    else:
+        with pytest.raises(SignalBundleValidationError, match="freshness"):
+            validate_signal_bundle(bundle, now=now)
+
+
+def test_future_provider_timestamp_is_rejected() -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+        provider_timestamp="2025-09-18T00:00:00Z",
+        freshness_status="fresh",
+    )
+    with pytest.raises(SignalBundleValidationError, match="provider_timestamp"):
+        validate_signal_bundle(bundle, now="2025-09-17T12:00:00Z")
+
+
+def test_provider_timestamp_quality_last_date_conflict_is_rejected(tmp_path) -> None:
+    input_csv = tmp_path / "btc.csv"
+    _btc_frame().to_csv(input_csv, index=False)
+    quality_report_path = tmp_path / "quality_report.json"
+    write_ohlcv_quality_report(
+        quality_report_path,
+        input_csv,
+        as_of="2025-09-17",
+    )
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256=_sha256(input_csv),
+        generated_at="2025-09-17T00:15:00Z",
+        provider_timestamp="2025-09-16T00:00:00Z",
+        freshness_status="fresh",
+    )
+    with pytest.raises(SignalBundleValidationError, match="last_date"):
+        write_signal_bundle_artifacts(
+            tmp_path,
+            bundle,
+            quality_report_path=quality_report_path,
+        )
+
+
+def test_historical_reference_replay_requires_reference_time_not_wall_clock() -> None:
+    bundle = build_btc_cycle_signal_bundle(
+        _btc_frame(),
+        as_of="2025-09-17",
+        raw_artifact_sha256="0" * 64,
+        generated_at="2025-09-17T00:15:00Z",
+        provider_timestamp="2025-09-17T00:00:00Z",
+        freshness_status="fresh",
+    )
+    # Historical reference replay can be fresh relative to the decision clock.
+    validate_signal_bundle(
+        bundle,
+        reference_time="2025-09-17T12:00:00Z",
+    )
+    # The same artifact is not fresh when judged against a later wall clock.
+    with pytest.raises(SignalBundleValidationError, match="freshness"):
+        validate_signal_bundle(bundle, now="2026-09-06T12:00:00Z")
