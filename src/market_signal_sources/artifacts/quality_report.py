@@ -207,6 +207,7 @@ def validate_ohlcv_quality_report(
         "duplicate_date_count",
         "first_date",
         "last_date",
+        "source_available_at",
         "max_gap_days",
         "gap_count_above_threshold",
     ):
@@ -297,6 +298,7 @@ def validate_ohlcv_quality_report_file(
         "dropped_row_count": report["dropped_row_count"],
         "first_date": report["first_date"],
         "last_date": report["last_date"],
+        "source_available_at": report.get("source_available_at", ""),
         "max_gap_days": report["max_gap_days"],
         "gap_count_above_threshold": report["gap_count_above_threshold"],
     }
@@ -353,6 +355,9 @@ def _quality_report_payload(
         "duplicate_date_count": int(duplicate_date_count),
         "first_date": first_date,
         "last_date": last_date,
+        "source_available_at": (
+            f"{last_date}T00:00:00Z" if last_date else ""
+        ),
         "max_gap_days": int(max_gap_days),
         "gap_count_above_threshold": int(gap_count_above_threshold),
     }
