@@ -22,6 +22,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.require_point_in_time_metadata and args.quality_report is None:
+            raise ValueError(
+                "--require-point-in-time-metadata requires --quality-report"
+            )
         input_frame = pd.read_csv(args.input_csv)
         quality_report = None
         if args.quality_report is not None:

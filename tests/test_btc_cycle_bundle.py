@@ -3759,6 +3759,38 @@ def test_us_equity_context_quality_report_checks_point_in_time_metadata(
     assert ok_quality_report["warning_reasons"] == []
 
 
+def test_us_equity_context_strict_mode_requires_a_quality_report(
+    tmp_path,
+    capsys,
+) -> None:
+    input_csv = tmp_path / "us_equity_context_raw.csv"
+    output_csv = tmp_path / "research" / "us_equity_context.csv"
+    pd.DataFrame(
+        {
+            "date": ["2025-01-02", "2025-01-03"],
+            "QQQ": [100.0, 101.0],
+            "SPY": [90.0, 91.0],
+            "cape_percentile": [0.70, 0.80],
+            "vix_percentile": [0.20, 0.40],
+            "breadth_above_sma200_pct": [0.60, 0.50],
+        }
+    ).to_csv(input_csv, index=False)
+
+    result = export_us_equity_context_main(
+        [
+            "--input-csv",
+            str(input_csv),
+            "--output-csv",
+            str(output_csv),
+            "--require-point-in-time-metadata",
+        ]
+    )
+
+    assert result == 2
+    assert "requires --quality-report" in capsys.readouterr().err
+    assert not output_csv.exists()
+
+
 def test_research_export_validator_rejects_checksum_mismatch(tmp_path) -> None:
     input_csv = tmp_path / "btc.csv"
     output_csv = tmp_path / "research" / "btc_cycle.csv"
