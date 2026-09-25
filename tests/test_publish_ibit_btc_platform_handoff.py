@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -9,8 +10,13 @@ import pytest
 from scripts.publish_ibit_btc_platform_handoff import (
     BINANCE_BTCUSDT_DAILY_URLS,
     _provider_name_for_url,
+    build_ibit_btc_platform_handoff,
     default_as_of,
     resolve_as_of,
+)
+from market_signal_sources.artifacts.validation import (
+    SignalBundleValidationError,
+    validate_signal_bundle,
 )
 
 
@@ -62,3 +68,24 @@ def test_provider_name_for_url() -> None:
     assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[0]) == "binance_vision_public"
     assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[1]) == "binance_us_public"
     assert _provider_name_for_url(BINANCE_BTCUSDT_DAILY_URLS[2]) == "binance_public"
+
+
+def test_ibit_daily_handoff_remains_fresh_through_next_us_trading_afternoon(tmp_path: Path) -> None:
+    csv_path = tmp_path / "btc.csv"
+    dates = pd.date_range(end="2026-09-24", periods=800, freq="D")
+    _write_btc_csv(csv_path, [day.date().isoformat() for day in dates])
+    artifacts = build_ibit_btc_platform_handoff(
+        work_dir=tmp_path / "output",
+        input_csv=csv_path,
+        as_of="2026-09-24",
+        code_commit="a" * 40,
+        source_version="0.1.1",
+    )
+    bundle = json.loads(
+        (artifacts["publication_dir"] / "bundle" / "signal_bundle.json").read_text(encoding="utf-8")
+    )
+    assert bundle["freshness"]["provider_timestamp"] == "2026-09-24T00:00:00Z"
+    assert bundle["freshness"]["max_age_hours"] == 48
+    validate_signal_bundle(bundle, now="2026-09-25T19:45:00Z")
+    with pytest.raises(SignalBundleValidationError, match="freshness"):
+        validate_signal_bundle(bundle, now="2026-09-26T00:00:01Z")

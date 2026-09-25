@@ -50,6 +50,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             generated_at=args.generated_at,
             provider_timestamp=provider_metadata.provider_timestamp,
             freshness_status=args.freshness_status,
+            max_age_hours=args.max_age_hours,
             license_scope=provider_metadata.license_scope,
             generated_by=provider_metadata.generated_by,
         )
@@ -117,6 +118,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--generated-at", required=True)
     parser.add_argument("--freshness-status", default="fresh")
+    parser.add_argument("--max-age-hours", type=int, default=36)
     parser.add_argument("--date-column", default="date")
     parser.add_argument("--close-column", default="close")
     parser.add_argument("--high-column", default="high")
