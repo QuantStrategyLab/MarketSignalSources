@@ -18,6 +18,9 @@ BINANCE_BTCUSDT_DAILY_URLS = (
 DEFAULT_CONSUMER = "us_equity:ibit_smart_dca"
 DEFAULT_STRATEGY = "ibit_smart_dca"
 DEFAULT_GCS_PREFIX = "gs://qsl-runtime-logs-shared/platform_handoffs"
+# BTC UTC daily bars are timestamped at their opening midnight. The next
+# completed bar is published before the following US trading afternoon.
+IBIT_BTC_DAILY_MAX_AGE_HOURS = 48
 
 
 def default_as_of(*, today: date | None = None) -> str:
@@ -136,6 +139,8 @@ def build_ibit_btc_platform_handoff(
             code_commit,
             "--generated-at",
             generated_at,
+            "--max-age-hours",
+            str(IBIT_BTC_DAILY_MAX_AGE_HOURS),
         ]
     )
     if build_exit != 0:

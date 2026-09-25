@@ -381,6 +381,13 @@ platform marks unified signals as required, failure to resolve a valid artifact
 should fail fast; only validated `last_valid` artifacts inside the configured
 stale window are an acceptable fallback.
 
+The scheduled IBIT BTC daily handoff uses a 48-hour freshness limit because
+the UTC daily candle carries its opening timestamp while the completed candle
+is published the next day and consumed during the US trading afternoon. This
+limit still rejects a missed daily publication before the following US session;
+other bundle builders retain their 36-hour default. Do not advance the source
+timestamp to the publish time or reuse an older candle to pass this check.
+
 Platform CI can then validate one handoff manifest before loading the linked
 bundle:
 
