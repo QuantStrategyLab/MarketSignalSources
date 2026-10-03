@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+import hashlib
 import json
 from os import PathLike
 from pathlib import Path
@@ -28,6 +29,7 @@ def write_research_export_manifest(
     input_sources: Iterable[Mapping[str, Any]] | None = None,
     transform_parameters: Mapping[str, Any] | None = None,
     quality_report_path: str | PathLike[str] | None = None,
+    input_csv_bytes: bytes | None = None,
 ) -> dict[str, Any]:
     """Write a non-runtime manifest for an offline research CSV export."""
 
@@ -46,8 +48,16 @@ def write_research_export_manifest(
         "columns": [str(column) for column in output_frame.columns],
         "input_csv": {
             "path": str(input_path),
-            "sha256": sha256_file(input_path),
-            "size_bytes": input_path.stat().st_size,
+            "sha256": (
+                hashlib.sha256(input_csv_bytes).hexdigest()
+                if input_csv_bytes is not None
+                else sha256_file(input_path)
+            ),
+            "size_bytes": (
+                len(input_csv_bytes)
+                if input_csv_bytes is not None
+                else input_path.stat().st_size
+            ),
         },
         "output_csv": {
             "path": str(output_path),

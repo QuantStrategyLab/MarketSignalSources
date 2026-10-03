@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from hashlib import sha256
+from io import BytesIO
 import json
 from pathlib import Path
 import sys
@@ -9,7 +11,6 @@ import sys
 import pandas as pd
 
 from market_signal_sources.artifacts.research_export import write_research_export_manifest
-from market_signal_sources.artifacts.signal_bundle import sha256_file
 from market_signal_sources.derived.us_equity import (
     NASDAQ_SP500_PRICE_PROXY_ARTIFACT_TYPE,
     NASDAQ_SP500_PRICE_PROXY_TRANSFORM,
@@ -22,8 +23,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        nasdaq100_frame = pd.read_csv(args.fred_nasdaq100_csv)
-        sp500_frame = pd.read_csv(args.fred_sp500_csv)
+        input_paths = (
+            (args.fred_nasdaq100_csv, "fred.nasdaq100"),
+            (args.fred_sp500_csv, "fred.sp500"),
+        )
+        snapshots: dict[Path, bytes] = {}
+        snapshot_paths: list[tuple[Path, Path, bytes, str]] = []
+        for path, source_id in input_paths:
+            resolved_path = path.resolve(strict=True)
+            if resolved_path not in snapshots:
+                snapshot = path.read_bytes()
+                if path.resolve(strict=True) != resolved_path:
+                    raise ValueError(f"input source path changed while reading: {path}")
+                snapshots[resolved_path] = snapshot
+            snapshot_paths.append(
+                (path, resolved_path, snapshots[resolved_path], source_id)
+            )
+        nasdaq100_frame = pd.read_csv(BytesIO(snapshot_paths[0][2]))
+        sp500_frame = pd.read_csv(BytesIO(snapshot_paths[1][2]))
         output = build_nasdaq_sp500_price_proxy_frame(
             fred_nasdaq100_frame=nasdaq100_frame,
             fred_sp500_frame=sp500_frame,
@@ -35,15 +52,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             provider_timestamp=args.provider_timestamp,
             min_history=args.min_history,
         )
-        args.output_csv.parent.mkdir(parents=True, exist_ok=True)
-        output.to_csv(args.output_csv, index=False)
+        for path, resolved_path, _, _ in snapshot_paths:
+            if path.resolve(strict=True) != resolved_path:
+                raise ValueError(f"input source changed during export: {path}")
+        for resolved_path, snapshot in snapshots.items():
+            if resolved_path.read_bytes() != snapshot:
+                raise ValueError(f"input source changed during export: {resolved_path}")
+
         manifest_path = args.manifest_path or args.output_csv.with_suffix(
             ".manifest.json"
         )
-        input_sources = (
-            _input_source_record(args.fred_nasdaq100_csv, source_id="fred.nasdaq100"),
-            _input_source_record(args.fred_sp500_csv, source_id="fred.sp500"),
+        input_sources = tuple(
+            _input_source_record(path, source_id=source_id, input_bytes=snapshot)
+            for path, _, snapshot, source_id in snapshot_paths
         )
+        args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+        output.to_csv(args.output_csv, index=False)
         manifest = write_research_export_manifest(
             manifest_path,
             output_csv_path=args.output_csv,
@@ -55,6 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             as_of=args.as_of,
             min_history=args.min_history,
             input_sources=input_sources,
+            input_csv_bytes=snapshot_paths[0][2],
             transform_parameters={
                 "nasdaq100_date_column": args.nasdaq100_date_column,
                 "nasdaq100_value_column": args.nasdaq100_value_column,
@@ -117,12 +142,17 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _input_source_record(path: Path, *, source_id: str) -> dict[str, object]:
+def _input_source_record(
+    path: Path,
+    *,
+    source_id: str,
+    input_bytes: bytes,
+) -> dict[str, object]:
     return {
         "source_id": source_id,
         "path": str(path),
-        "sha256": sha256_file(path),
-        "size_bytes": path.stat().st_size,
+        "sha256": sha256(input_bytes).hexdigest(),
+        "size_bytes": len(input_bytes),
     }
 
 
