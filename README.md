@@ -1,662 +1,127 @@
 # MarketSignalSources
 
-Artifact-first market signal source builders for QuantStrategyLab strategy platforms.
+Build and validate market signal artifacts from local source data.
 
-## QSL architecture role
+English | [简体中文](README.zh-CN.md)
 
-- **Layer**: `strategy-library`.
-- **Responsibility**: artifact-first market signal source builders.
-- **Owns**: market signal bundles and handoff artifacts.
-- **Consumes**: public/market inputs and downstream strategy consumers.
-- **Must not**: submit orders or mutate platform runtime settings.
+## Status
 
-## Installation
+Experimental. This project is not financial advice and does not guarantee a
+trading result. Downstream live trading can lose money; users are responsible
+for their configuration and orders.
 
-This package is intended to be consumed directly from GitHub by strategy and
-platform repositories. Pin production dependencies to an immutable commit SHA:
+## What this is
+
+A Python package for developers who need reproducible inputs for strategy
+research and platform integration. It normalizes local data, computes derived
+indicators, and writes JSON or CSV artifacts with hashes, provenance, freshness
+metadata, and consumer contracts that define the fields each reader requires.
+
+The package includes BTC cycle indicators, daily OHLCV (open, high, low, close, and volume) technical indicators,
+semiconductor rotation inputs, and US equity research exports. Catalog and
+contract validators check that a source family supplies its consumer's required
+symbols and fields.
+
+## What this is not
+
+This package does not plan or submit orders, manage broker accounts, or change
+platform settings. A valid signal artifact does not establish historical data
+availability, confer a data license, or authorize trading. Broker adapters consume
+validated artifacts rather than computing shared signals themselves.
+
+## Quick start
+
+Use Python 3.11 or newer. For a local checkout:
+
+```bash
+git clone https://github.com/QuantStrategyLab/MarketSignalSources.git
+cd MarketSignalSources
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e . pytest
+python -m pytest tests -q
+```
+
+Inspect the built-in catalog without fetching data or writing artifacts:
+
+```bash
+python -m market_signal_sources.cli.list_signal_source_families --pretty
+python -m market_signal_sources.cli.list_consumer_contracts --pretty
+```
+
+For downstream installation, pin a reviewed immutable revision:
 
 ```text
 market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@<commit-sha>
 ```
 
-For local testing, install the current public branch:
+For development against the current public branch:
 
 ```bash
 python -m pip install "market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@main"
-```
-
-With `uv`:
-
-```bash
 uv add "market-signal-sources @ git+https://github.com/QuantStrategyLab/MarketSignalSources.git@main"
 ```
 
-Runtime platforms should treat this package as a signal artifact producer and
-contract validator. Broker execution repositories should consume the published
-JSON artifacts or pinned contract exports; they should not compute market
-signals inside broker adapters.
+See the [CLI reference](docs/cli-reference.md) for local bundle construction,
+research exports, artifact validation, and handoff examples. A handoff manifest
+links a signal bundle, source catalog, and consumer registry by their hashes.
 
-This repository starts with a narrow MVP:
+## Configuration
 
-- read local BTC daily OHLCV CSV
-- compute BTC cycle indicators used by `us_equity:ibit_smart_dca`
-- compute daily OHLCV technical indicators used by
-  `us_equity:nasdaq_sp500_smart_dca`
-- publish a `market_signal_bundle.v1` JSON bundle with quality report, manifest,
-  and index files
+Core CLIs use explicit arguments and local files. The following options apply to
+`build_btc_cycle_bundle`; other commands define their options in `--help`.
 
-It intentionally does not fetch vendor data, load secrets, call broker APIs, or make trading decisions.
+| Option | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `--input-csv` | Yes | none | Local OHLCV CSV, such as `./btc_daily.csv`. |
+| `--output-dir` | Yes | none | Directory for the bundle, quality report, manifest, and local index. |
+| `--as-of` | Yes | none | Source cutoff date in `YYYY-MM-DD` format. |
+| `--generated-at` | Yes | none | Artifact generation timestamp with timezone. |
+| `--symbol` | No | `BTC-USD` | Symbol represented by the input CSV. |
+| `--provider` | No | `local_csv` | Source provider recorded in provenance. |
+| `--provider-dataset` | No | `btc_usd_daily_ohlcv` | Source dataset recorded in provenance. |
+| `--source-version` | No | `0.1.0` | Producer version recorded in provenance. |
+| `--code-commit` | No | Zero-filled commit placeholder | Producer revision; set a real revision for published artifacts. |
+| `--license-scope` | No | `internal_runtime` | Declared source usage scope; does not grant a license. |
+| `--max-age-hours` | No | `36` | Bundle freshness limit in hours. |
+| `--publication-index` | No | none | Optional shared local index to update with the new manifest. |
 
-For platform integration boundaries and the intended multi-market extension path,
-see [Platform Signal Source Architecture](docs/platform_signal_source_architecture.md).
-For the concrete runtime and research handoff consumption contract, see
-[Platform Consumption Contract](docs/platform_consumption_contract.md).
+Local CSV input needs `date` and `close` columns by default. Missing `high` and
+`low` columns use the close column; `volume` is optional. Column names can be
+configured. Artifacts must not contain signed URLs, tokens, cookies, account IDs,
+or raw broker data.
 
-Installed packages expose console-script aliases for platform CI, including
-`build-daily-technical-bundle`, `build-platform-handoff`, `audit-signal-consumption`,
-`list-signal-source-families`, `list-signal-consumer-contracts`, and
-`validate-quality-report`. The `python -m market_signal_sources.cli...` examples
-below use the same entrypoints.
+## Architecture
 
-## BTC Cycle Bundle
+The `providers` package reads local inputs, `derived` computes indicators,
+`artifacts` writes and validates contracts, and `cli` exposes command entrypoints.
+See the [signal source architecture](docs/platform_signal_source_architecture.md)
+and [platform consumption contract](docs/platform_consumption_contract.md).
 
-Example:
+The [CLI reference](docs/cli-reference.md) covers bundle and registry schemas,
+source catalogs, quality checks, freshness policies, runtime input mapping, and
+research-only exports. For the organization overview, see
+[QuantStrategyLab](https://github.com/QuantStrategyLab/.github/blob/main/profile/README.md).
 
-```bash
-python -m market_signal_sources.cli.build_btc_cycle_bundle \
-  --input-csv ./btc_daily.csv \
-  --output-dir ./data/output/signal_bundles/crypto/btc/derived_indicators/2026-06-19 \
-  --as-of 2026-06-19 \
-  --symbol BTC-USD \
-  --provider local_csv \
-  --provider-dataset btc_usd_daily_ohlcv \
-  --source-version 0.1.0 \
-  --code-commit 0000000000000000000000000000000000000000 \
-  --generated-at 2026-06-19T00:15:00Z \
-  --publication-index ./data/output/signal_bundles/index.json \
-  --pretty
+## Repository layout
+
+```text
+src/market_signal_sources/    providers, indicators, artifacts, and CLI commands
+tests/                       unit and local artifact tests
+docs/                        architecture, contracts, and CLI reference
+scripts/                     publication and maintenance entrypoints
 ```
 
-Outputs:
+## Contributing
 
-- `signal_bundle.json`
-- `quality_report.json`
-- `manifest.json`
-- bundle-local `index.json`
-- optional publication root `signal_bundles/index.json`
+See [CONTRIBUTING.md](CONTRIBUTING.md). Documentation follows the
+[QuantStrategyLab documentation style guide](https://github.com/QuantStrategyLab/.github/blob/main/docs/STYLE_GUIDE.md).
 
-The bundle writer self-validates the written `index.json` -> `manifest.json` ->
-`signal_bundle.json` chain by default before returning paths, so a structurally
-inconsistent bundle fails during the build step rather than later in platform CI.
-When `--publication-index` is provided, the generated manifest is also upserted
-into a platform-facing root index. That root index is the intended lookup point
-for platforms that select the latest fresh bundle across multiple dated artifact
-directories.
+## Security
 
-The local CSV provider records provider metadata before bundle construction:
-provider name, dataset, provider timestamp, raw CSV SHA-256, license scope, and
-generator id. These fields are written into bundle freshness/provenance so a
-platform can audit which source file produced the injected `derived_indicators`.
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting. Do not open a
+public issue with credentials or a vulnerability report.
 
-`quality_report.json` uses `market_signal_quality_report.v1` and records raw row
-count, normalized row count, date range, duplicate dates, dropped invalid rows,
-gap checks, minimum-history status, and the input CSV hash. `manifest.json`
-pins the quality report path and SHA-256 when it is generated by the bundle CLI.
-Manifest validation also checks that `quality_report.input_csv.sha256` matches
-`signal_bundle.provenance.raw_artifact_sha256`.
+## License
 
-Research CSV exports use `research_export.v1`. When a research export CLI also
-writes a quality report, the research manifest includes a `quality_report`
-record with path, SHA-256, and file size so downstream strategy backtests can
-prove the signal CSV and quality audit were produced as one artifact set.
-
-Validate the generated artifacts before publishing or handing them to a platform:
-
-```bash
-python -m market_signal_sources.cli.validate_quality_report \
-  ./data/output/crypto/btc/derived_indicators/2026-06-19/quality_report.json \
-  --pretty
-```
-
-The quality report validator rejects `quality_status=fail` by default. Use
-`--allow-fail-status` only for offline inspection of failed source data.
-
-## Daily Technical Bundle
-
-US equity runtime consumers can use the same artifact envelope for common
-technical indicators. The `build-daily-technical-bundle` CLI computes fields
-such as `sma50`, `sma200`, `sma200_gap`, `rsi14`, `drawdown_252d`, volatility,
-momentum, and `trend_score` from a local daily OHLCV CSV:
-
-```bash
-python -m market_signal_sources.cli.build_daily_technical_bundle \
-  --input-csv ./qqq_daily.csv \
-  --output-dir ./data/output/signal_bundles/us_equity/technical/QQQ/2026-06-19 \
-  --as-of 2026-06-19 \
-  --symbol QQQ \
-  --domain us_equity \
-  --bundle-id-prefix us_equity.technical.daily \
-  --provider local_csv \
-  --provider-dataset us_equity_daily_ohlcv \
-  --compatible-profile us_equity:nasdaq_sp500_smart_dca \
-  --source-version 0.1.0 \
-  --code-commit 0000000000000000000000000000000000000000 \
-  --generated-at 2026-06-19T00:15:00Z \
-  --publication-index ./data/output/signal_bundles/index.json \
-  --pretty
-```
-
-The current runtime family `us_equity.technical_daily` covers QQQ/SPY fields
-for `us_equity:nasdaq_sp500_smart_dca`. Multi-symbol publication can be built
-by producer code with `build_daily_technical_signal_bundle`; the single-symbol
-CLI is a small local-input adapter for simple release jobs.
-
-```bash
-python -m market_signal_sources.cli.validate_signal_bundle \
-  ./data/output/crypto/btc/derived_indicators/2026-06-19/manifest.json \
-  --pretty
-```
-
-Or resolve through the local index:
-
-```bash
-python -m market_signal_sources.cli.validate_signal_bundle \
-  --index ./data/output/signal_bundles/index.json \
-  --as-of 2026-06-20 \
-  --consumer research:ibit_btc_ahr999_mayer_precomputed_variants \
-  --pretty
-```
-
-The optional `--consumer` check validates both bundle profile compatibility and
-downstream field coverage before publishing. For
-`research:ibit_btc_ahr999_mayer_precomputed_variants`, the bundle's
-`consumer_contract.compatible_profiles` must include that consumer and the
-`BTC-USD` payload must include `ahr999`, `ahr999_sma`, and `mayer_multiple`.
-The production `us_equity:ibit_smart_dca` consumer requires the BTC runtime
-fields needed by the strategy: `close`, `sma200`, `sma200_gap`, `rsi14`,
-`ahr999`, `ahr999_sma`, and `mayer_multiple`.
-`research:ibit_btc_ahr999_precomputed` remains an AHR999-only profile for
-offline candidate comparisons. The research-only
-`research:ibit_btc_ahr999_helper_precomputed_variants` consumer covers the
-precomputed helper fields `ahr999_365d_percentile` and `ahr999_30d_slope`, plus
-`ahr999`, so IBIT helper candidates can be checked against a published contract
-instead of relying on loose CSV column names.
-Plain manifest/index audit summaries also include `compatible_profiles`, so CI
-logs can show the allowed consumer set without printing signal values.
-Base bundle validation rejects missing, empty, or malformed `compatible_profiles`
-even when no target `--consumer` is supplied.
-Published manifest and index entries carry the same `compatible_profiles` and
-validation rejects drift between index, manifest, and bundle.
-
-Consumer field requirements are also exposed as a JSON registry so platform and
-strategy repositories can run drift checks without importing this package at
-runtime:
-
-```bash
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --consumer us_equity:ibit_smart_dca \
-  --pretty
-```
-
-The registry uses `market_signal_consumer_contracts.v1` and lists each
-consumer's canonical input plus required indicator fields by symbol.
-To publish the registry as an artifact with SHA-256 metadata:
-
-```bash
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --output-json ./data/output/market_signal_consumers.json \
-  --pretty
-```
-
-The printed summary includes `sha256`, `size_bytes`, `schema_version`,
-`canonical_input`, and `consumer_count`.
-For platform handoff, publish the registry with a manifest that pins the
-registry path, schema, SHA-256, size, consumer count, and known-consumer
-coverage:
-
-```bash
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --output-dir ./data/output/contracts \
-  --pretty
-```
-
-Platform CI can validate the same artifact before using it as a contract source:
-
-```bash
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --validate-json ./data/output/market_signal_consumers.json \
-  --require-all-known-consumers \
-  --pretty
-```
-
-When a manifest is available, validate the manifest and linked registry together:
-
-```bash
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --validate-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
-  --require-all-known-consumers \
-  --pretty
-```
-
-Validation rejects schema drift, unknown consumers, duplicate fields, and
-missing known consumers, plus forbidden sensitive key names such as token,
-secret, cookie, or signed URL.
-The validation summary also includes `canonical_registry_payload_sha256`,
-`local_registry_payload_sha256`, and `local_contract_registry_verified`; when
-`--require-all-known-consumers` is used, these fields prove the full registry is
-logically identical to this repository's local consumer contract table, even if
-JSON formatting or contract order differs.
-
-Strategy repositories can export their own local registry payload and hand that
-file back to this validator as a two-way drift check:
-
-```bash
-python -m us_equity_strategies.signals.signal_bundle_cli \
-  --local-consumer-contract-registry \
-  > ./tmp/us_equity_local_consumers.json
-
-python -m market_signal_sources.cli.list_consumer_contracts \
-  --validate-json ./tmp/us_equity_local_consumers.json \
-  --require-all-known-consumers \
-  --pretty
-```
-
-For platform handoff, publish and validate this manifest together with the
-source family catalog manifest below.
-
-The package also exposes a small signal source family catalog through
-`signal_source_family_catalog_payload()`. The catalog records stable family-level
-metadata such as `crypto.btc_cycle_daily`'s canonical input, transform, freshness
-policy, produced fields, and compatible consumer profiles. It is intended for CI
-and release checks before adding more US equity, Hong Kong equity, or crypto
-families.
-The catalog also carries a top-level `domain_coverage` roadmap for crypto,
-US equity, and Hong Kong equity source families. `domain_coverage` separates
-implemented families from planned families, so platform CI can inspect the
-cross-market direction without treating planned items as runtime-compatible
-source families.
-The currently implemented US equity research families are
-`us_equity.nasdaq_sp500_context_daily`, which publishes `US-EQUITY-CONTEXT`
-fields for `cape_percentile`, `vix_percentile`, and
-`breadth_above_sma200_pct`, and
-`us_equity.nasdaq_sp500_public_context_daily`, which publishes only
-`cape_percentile` and `vix_percentile` for public-data-only experiments. A
-third research-only family, `us_equity.nasdaq_sp500_price_proxy_daily`, publishes
-`US-EQUITY-PRICE-PROXY` fields `QQQ` and `SPY` from local FRED `NASDAQ100` and
-`SP500` snapshots for price-only smart-DCA reproductions. These families are
-compatible with `research:nasdaq_sp500_external_context_precomputed`,
-`research:nasdaq_sp500_cape_vix_external_context_precomputed`, and
-`research:nasdaq_sp500_price_proxy`, respectively; none is a runtime strategy
-default. Their catalog records include source profiles for FRED `VIXCLS`,
-Shiller CAPE snapshots, FRED `NASDAQ100`, and FRED `SP500`; the full context
-family also requires point-in-time index breadth history. The breadth profile
-explicitly rejects current-constituent backfills because they create survivorship
-bias. FRED profiles and Shiller CAPE profiles expose `max_allowed_lag_days`,
-matching the related quality-report or research freshness assumptions.
-Catalog validation also cross-checks every compatible consumer profile against
-the consumer contract registry, so a family cannot claim support for a strategy
-unless its produced symbols and fields cover that strategy's required indicators.
-For rollout governance, the ownership matrix maps each consumer back to the
-implemented source families, required fields, freshness policies, and provider
-lag policies that own it:
-
-```bash
-python -m market_signal_sources.cli.list_signal_ownership_matrix --pretty
-```
-
-A runtime consumer should not be enabled until the matrix reports that it has a
-source family and all required fields are covered.
-
-```bash
-python -m market_signal_sources.cli.list_signal_source_families \
-  --family crypto.btc_cycle_daily \
-  --pretty
-```
-
-You can also publish by implemented market domain instead of hand-maintaining a
-family list:
-
-```bash
-python -m market_signal_sources.cli.list_signal_source_families \
-  --domain us_equity \
-  --output-dir ./data/output/us_equity_source_catalog \
-  --pretty
-```
-
-`--domain hk_equity` currently returns an empty `families` list while preserving
-the `domain_coverage` roadmap. That is intentional: Hong Kong equity entries are
-planned, not runtime-compatible, until real family records and tests exist.
-
-Publish the catalog as a hash-pinned artifact and manifest:
-
-```bash
-python -m market_signal_sources.cli.list_signal_source_families \
-  --output-dir ./data/output/source_catalog \
-  --pretty
-```
-
-```bash
-python -m market_signal_sources.cli.list_signal_source_families \
-  --validate-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
-  --require-all-known-families \
-  --pretty
-```
-
-After publishing the signal bundle, source catalog, and consumer contracts, build
-a single platform handoff manifest that pins all three manifest hashes:
-
-```bash
-python -m market_signal_sources.cli.build_platform_handoff \
-  --signal-bundle-manifest ./data/output/signal_bundles/crypto/btc/derived_indicators/2026-06-19/manifest.json \
-  --source-family-catalog-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
-  --consumer-contract-registry-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
-  --output-manifest ./data/output/platform_handoff.json \
-  --consumer us_equity:ibit_smart_dca \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --pretty
-```
-
-For the production release path, a single command can wrap an already-built
-bundle manifest into the full platform handoff directory. The bundle manifest
-must already live under the dated `--publication-dir`; provider fetching and
-bundle construction stay in the upstream job step.
-
-```bash
-python -m market_signal_sources.cli.publish_platform_signal_handoff \
-  --publication-dir ./data/output/platform_handoffs/2026-06-19 \
-  --signal-bundle-manifest ./data/output/platform_handoffs/2026-06-19/bundle/manifest.json \
-  --consumer us_equity:ibit_smart_dca \
-  --index-path ./data/output/platform_handoffs/index.json \
-  --lookup-as-of 2026-06-20 \
-  --pretty
-```
-
-The publication command writes and validates the consumer registry, source
-catalog, platform handoff, handoff index, consumption audit, runtime injection
-plan, and runtime adapter config. It defaults to strict gates for all known
-source families, all known consumers, and runtime consumer coverage. If a
-platform marks unified signals as required, failure to resolve a valid artifact
-should fail fast; only validated `last_valid` artifacts inside the configured
-stale window are an acceptable fallback.
-
-The scheduled IBIT BTC daily handoff uses a 48-hour freshness limit because
-the UTC daily candle carries its opening timestamp while the completed candle
-is published the next day and consumed during the US trading afternoon. This
-limit still rejects a missed daily publication before the following US session;
-other bundle builders retain their 36-hour default. Do not advance the source
-timestamp to the publish time or reuse an older candle to pass this check.
-
-Platform CI can then validate one handoff manifest before loading the linked
-bundle:
-
-```bash
-python -m market_signal_sources.cli.build_platform_handoff \
-  --validate-manifest ./data/output/platform_handoff.json \
-  --consumer us_equity:ibit_smart_dca \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --pretty
-```
-
-For a single platform-facing consumption audit, use the unified audit command.
-It validates the handoff/index for the explicit consumer and returns a
-`market_signal_consumption_audit.v1` summary with the runtime injection key:
-
-```bash
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --platform-handoff-index ./data/output/platform_handoffs/index.json \
-  --consumer us_equity:ibit_smart_dca \
-  --as-of 2026-06-19 \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --require-runtime-consumer-coverage \
-  --pretty
-```
-
-To persist the same decision record next to a deployment, write and validate an
-audit artifact:
-
-```bash
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --platform-handoff-index ./data/output/platform_handoffs/index.json \
-  --consumer us_equity:ibit_smart_dca \
-  --as-of 2026-06-19 \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --require-runtime-consumer-coverage \
-  --output-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
-  --pretty
-
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --validate-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
-  --pretty
-```
-
-If a platform wants to persist only the minimal runtime injection mapping after
-the audit succeeds, write and validate the runtime plan artifact:
-
-```bash
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --platform-handoff-index ./data/output/platform_handoffs/index.json \
-  --consumer us_equity:ibit_smart_dca \
-  --as-of 2026-06-19 \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --require-runtime-consumer-coverage \
-  --output-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
-  --pretty
-
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --validate-runtime-plan-json ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
-  --pretty
-
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --validate-runtime-plan-with-audit ./data/output/platform_handoffs/ibit_smart_dca.runtime_plan.json \
-  --audit-json ./data/output/platform_handoffs/ibit_smart_dca.audit.json \
-  --pretty
-```
-
-Platform CI can also validate the strategy-owned signal adapter config before
-resolving a handoff:
-
-```bash
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --validate-runtime-adapter-config-json ./deploy/ibit_smart_dca.signal_adapter.json \
-  --pretty
-
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --validate-runtime-adapter-deployment-json ./deploy/ibit_smart_dca.signal_adapter.json \
-  --pretty
-```
-
-For platform lookup across dated handoffs, publish a handoff index and validate
-it by consumer and `as_of`:
-
-```bash
-python -m market_signal_sources.cli.build_platform_handoff \
-  --output-index ./data/output/platform_handoffs/index.json \
-  --handoff-manifest ./data/output/platform_handoff.json \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --require-runtime-consumer-coverage \
-  --pretty
-
-python -m market_signal_sources.cli.build_platform_handoff \
-  --validate-index ./data/output/platform_handoffs/index.json \
-  --consumer us_equity:ibit_smart_dca \
-  --as-of 2026-06-19 \
-  --require-all-known-families \
-  --require-all-known-consumers \
-  --require-runtime-consumer-coverage \
-  --pretty
-```
-
-For offline research CSVs, build a research handoff instead of a platform
-handoff. It pins the research export manifest, source family catalog manifest,
-and consumer contract registry manifest as one auditable unit:
-
-```bash
-python -m market_signal_sources.cli.build_research_handoff \
-  --research-export-manifest ./data/output/research/us_equity_public_context.manifest.json \
-  --source-family-catalog-manifest ./data/output/source_catalog/signal_source_families.manifest.json \
-  --consumer-contract-registry-manifest ./data/output/contracts/market_signal_consumers.manifest.json \
-  --output-manifest ./data/output/research_handoff.json \
-  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
-  --pretty
-
-python -m market_signal_sources.cli.build_research_handoff \
-  --validate-manifest ./data/output/research_handoff.json \
-  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
-  --pretty
-```
-
-The research handoff validates the linked research CSV manifest and verifies
-that the source catalog contains a family with the export transform and target
-research consumer, while the registry contains the same consumer contract.
-The unified audit command can validate the same research handoff and marks it as
-research-only, not runtime-injectable:
-
-```bash
-python -m market_signal_sources.cli.audit_signal_consumption \
-  --research-handoff-manifest ./data/output/research_handoff.json \
-  --consumer research:nasdaq_sp500_cape_vix_external_context_precomputed \
-  --pretty
-```
-
-Export a daily BTC cycle research CSV for offline smart-DCA candidate comparison:
-
-```bash
-python -m market_signal_sources.cli.export_btc_cycle_research_csv \
-  --input-csv ./btc_daily.csv \
-  --output-csv ./data/output/research/btc_cycle_indicators.csv \
-  --manifest-path ./data/output/research/btc_cycle_indicators.manifest.json \
-  --as-of 2026-06-19 \
-  --pretty
-```
-
-The exported CSV includes `date`, `close`, `ahr999`, `ahr999_sma`,
-`mayer_multiple`, `sma200_gap`, `drawdown_252d`, plus deterministic research
-helper fields such as AHR999/Mayer trailing percentiles, AHR999 30-day slope,
-30-day realized volatility, and 90-day momentum. It is intended for offline
-research tooling, not direct platform injection. The research manifest records
-input/output SHA-256 hashes, row count, columns, date range, transform, source
-version, and `min_history`.
-
-Validate the research CSV manifest before handing it to strategy research tooling:
-
-```bash
-python -m market_signal_sources.cli.validate_research_export \
-  ./data/output/research/btc_cycle_indicators.manifest.json \
-  --expected-artifact-type btc_cycle_research_csv \
-  --expected-transform crypto.btc.ahr999.v1 \
-  --pretty
-```
-
-Export a Nasdaq/S&P external context research CSV from a local, already
-point-in-time input file:
-
-```bash
-python -m market_signal_sources.cli.export_us_equity_context_research_csv \
-  --input-csv ./us_equity_context_daily.csv \
-  --output-csv ./data/output/research/us_equity_context.csv \
-  --manifest-path ./data/output/research/us_equity_context.manifest.json \
-  --quality-report ./data/output/research/us_equity_context.quality.json \
-  --require-point-in-time-metadata \
-  --as-of 2026-06-19 \
-  --pretty
-```
-
-The export normalizes `cape_percentile`, `vix_percentile`, and
-`breadth_above_sma200_pct`, and optionally passes through `QQQ` / `SPY` columns
-for strategy research joins. Its manifest uses
-`artifact_type=us_equity_context_research_csv` and
-`transform=us_equity.nasdaq_sp500.context.v1`. The optional quality report
-records missing columns, invalid dates, out-of-range percentile values,
-duplicate dates, date gaps, rows filtered after `as_of`, missing
-`provider_timestamp`, provider timestamps after `as_of`, and optional breadth
-universe metadata such as `breadth_universe_snapshot_id` and
-`breadth_universe_as_of`. Without `--require-point-in-time-metadata`, missing
-provider or breadth metadata is a warning; with it, those missing point-in-time
-proof fields fail the export before strategy research can rank candidates.
-
-For a public-data-only CAPE/VIX research input, use the local FRED VIXCLS and
-Shiller CAPE snapshots without pretending breadth exists:
-
-```bash
-python -m market_signal_sources.cli.export_us_equity_public_context_research_csv \
-  --fred-vixcls-csv ./VIXCLS.csv \
-  --shiller-cape-csv ./shiller_cape.csv \
-  --output-csv ./data/output/research/us_equity_public_context.csv \
-  --manifest-path ./data/output/research/us_equity_public_context.manifest.json \
-  --quality-report ./data/output/research/us_equity_public_context.quality.json \
-  --as-of 2026-06-19 \
-  --pretty
-```
-
-This public export computes point-in-time expanding percentiles for VIX and CAPE,
-aligns the low-frequency CAPE percentile to VIX dates with backward as-of logic,
-and writes the same `artifact_type=us_equity_context_research_csv` /
-`transform=us_equity.nasdaq_sp500.context.v1` manifest shape. Its output only
-satisfies `research:nasdaq_sp500_cape_vix_external_context_precomputed`; it does
-not satisfy the full `research:nasdaq_sp500_external_context_precomputed`
-consumer because that consumer also requires `breadth_above_sma200_pct`.
-The optional public quality report uses
-`us_equity_public_context_availability_report.v1` and audits the FRED/Shiller
-source hashes, missing columns, invalid dates, null or non-positive values,
-duplicates, `as_of` filtering, source freshness, and date gaps in the merged
-public context. By default FRED VIX must be no more than 10 days stale versus
-`as_of`, and Shiller CAPE must be no more than 120 days stale; stale inputs fail
-the quality report instead of silently extending old low-frequency values into a
-current research run.
-
-For a price-only Nasdaq/S&P research input, export local FRED `NASDAQ100` and
-`SP500` snapshots into the QQQ/SPY column names expected by strategy research
-tools:
-
-```bash
-python -m market_signal_sources.cli.export_us_equity_price_proxy_research_csv \
-  --fred-nasdaq100-csv ./NASDAQ100.csv \
-  --fred-sp500-csv ./SP500.csv \
-  --output-csv ./data/output/research/us_equity_price_proxy.csv \
-  --manifest-path ./data/output/research/us_equity_price_proxy.manifest.json \
-  --as-of 2026-06-19 \
-  --pretty
-```
-
-This export writes `artifact_type=us_equity_price_proxy_research_csv` and
-`transform=us_equity.nasdaq_sp500.price_proxy.v1`. It performs an exact-date
-inner join between the two index series and does not forward-fill missing price
-observations. The `QQQ` and `SPY` column names are compatibility labels for
-strategy research inputs; the manifest and input source records preserve the
-fact that the raw data came from index-level FRED snapshots rather than ETF
-fills.
-
-Validation checks input/output SHA-256 and size, rejects sensitive manifest keys,
-and confirms the output CSV header, row count, first date, and last date match
-the manifest.
-
-Downstream platforms should validate the manifest and bundle hashes, freshness, provenance, and canonical input before injecting:
-
-```python
-StrategyContext(
-    market_data={"derived_indicators": bundle["derived_indicators"]},
-    ...
-)
-```
-
-## Boundary
-
-Allowed here:
-
-- local CSV or artifact inputs
-- OHLCV normalization
-- deterministic derived indicators
-- artifact writing, hashes, freshness, provenance
-
-Not allowed here:
-
-- broker account state
-- order planning or submission
-- platform enable/disable switches
-- signed URLs, tokens, cookies, account IDs, or raw broker payloads in artifacts
+[MIT](LICENSE).
