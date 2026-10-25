@@ -106,7 +106,7 @@ scripts/                     发布和维护入口
 
 ## 参与贡献
 
-详见 [CONTRIBUTING.md](CONTRIBUTING.md)。文档遵循
+详见 [CONTRIBUTING.md](CONTRIBUTING.md)。AI 助手与维护者遵循 [AGENTS.md](AGENTS.md)。文档遵循
 [QuantStrategyLab 文档风格指南](https://github.com/QuantStrategyLab/.github/blob/main/docs/STYLE_GUIDE.md)。
 
 ## 安全

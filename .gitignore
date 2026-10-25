@@ -8,3 +8,12 @@ dist/
 build/
 *.egg-info/
 data/output/
+
+# Keep AI rule files and shared engineering conventions tracked even when a
+# personal global ignore excludes Markdown.
+!AGENTS.md
+!CLAUDE.md
+!.github/engineering.md
+
+# Local editor, OS and tool cache files.
+.DS_Store
