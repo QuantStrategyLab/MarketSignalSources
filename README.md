@@ -114,7 +114,7 @@ scripts/                     publication and maintenance entrypoints
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Documentation follows the
+See [CONTRIBUTING.md](CONTRIBUTING.md). AI assistants and maintainers also follow [AGENTS.md](AGENTS.md). Documentation follows the
 [QuantStrategyLab documentation style guide](https://github.com/QuantStrategyLab/.github/blob/main/docs/STYLE_GUIDE.md).
 
 ## Security
