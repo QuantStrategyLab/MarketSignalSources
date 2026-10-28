@@ -36,6 +36,8 @@ python -m pytest tests -q
 
 CI also builds the package and checks whitespace.
 
+Organization documentation rules are checked by `python scripts/check_style.py`, which also runs in CI as the `Documentation check` job.
+
 ## Naming and documentation
 
 - Developer documentation is English by default; Chinese siblings use
