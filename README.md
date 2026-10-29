@@ -95,8 +95,8 @@ or raw broker data.
 
 The `providers` package reads local inputs, `derived` computes indicators,
 `artifacts` writes and validates contracts, and `cli` exposes command entrypoints.
-See the [signal source architecture](docs/platform_signal_source_architecture.md)
-and [platform consumption contract](docs/platform_consumption_contract.md).
+See the [signal source architecture](docs/platform-signal-source-architecture.md)
+and [platform consumption contract](docs/platform-consumption-contract.md).
 
 The [CLI reference](docs/cli-reference.md) covers bundle and registry schemas,
 source catalogs, quality checks, freshness policies, runtime input mapping, and

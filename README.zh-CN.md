@@ -88,8 +88,8 @@ cookie、账户 ID 或原始券商数据。
 ## 架构
 
 `providers` 读取本地输入，`derived` 计算指标，`artifacts` 写入和校验契约，
-`cli` 提供命令入口。详见[信号源架构](docs/platform_signal_source_architecture.md)
-和[平台消费契约](docs/platform_consumption_contract.md)。
+`cli` 提供命令入口。详见[信号源架构](docs/platform-signal-source-architecture.md)
+和[平台消费契约](docs/platform-consumption-contract.md)。
 
 [CLI 参考](docs/cli-reference.md)介绍信号包和注册表结构、信号源目录、质量检查、
 时效策略、运行时输入映射，以及仅供研究使用的导出。组织概览见

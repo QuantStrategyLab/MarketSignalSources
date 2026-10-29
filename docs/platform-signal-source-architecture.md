@@ -75,7 +75,7 @@ catalog has a family matching the export transform and target research consumer,
 and confirms the consumer registry contains the same contract.
 
 For the platform-side integration checklist and validation gates, see
-[Platform Consumption Contract](platform_consumption_contract.md).
+[Platform Consumption Contract](platform-consumption-contract.md).
 
 ## Design Pressure
 
