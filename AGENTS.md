@@ -67,6 +67,8 @@ Organization documentation rules are checked by `python scripts/check_style.py`,
 
 ## Do not
 
+- Only the owner, or a reviewer explicitly authorized by the owner, may apply the `owner-approved` label; coding agents must never apply it to their own PRs.
+
 - Do not backfill today's information into a historical observation; keep the
   observation time and the source time distinct.
 - Do not drop provenance, hash or freshness fields from an artifact to simplify a
