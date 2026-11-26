@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -17,7 +18,7 @@ BINANCE_BTCUSDT_DAILY_URLS = (
 )
 DEFAULT_CONSUMER = "us_equity:ibit_smart_dca"
 DEFAULT_STRATEGY = "ibit_smart_dca"
-DEFAULT_GCS_PREFIX = "gs://qsl-runtime-logs-shared/platform_handoffs"
+DEFAULT_GCS_PREFIX = os.environ.get("MARKET_SIGNAL_GCS_PREFIX", "").strip()
 # BTC UTC daily bars are timestamped at their opening midnight. The next
 # completed bar is published before the following US trading afternoon.
 IBIT_BTC_DAILY_MAX_AGE_HOURS = 48
@@ -217,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--gcs-prefix",
         default=DEFAULT_GCS_PREFIX,
-        help="GCS prefix for platform handoffs.",
+        help="GCS prefix for platform handoffs (e.g. gs://<bucket>/platform_handoffs).",
     )
     parser.add_argument(
         "--execute",
@@ -274,9 +275,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"built platform handoff index at {artifacts['index_path']}")
 
     if args.execute:
+        gcs_prefix = (args.gcs_prefix or os.environ.get("MARKET_SIGNAL_GCS_PREFIX", "")).strip()
+        if not gcs_prefix:
+            print("error: --gcs-prefix or MARKET_SIGNAL_GCS_PREFIX is required with --execute", file=sys.stderr)
+            return 2
         upload_root = work_dir / "platform_handoffs"
-        upload_platform_handoffs(local_root=upload_root, gcs_prefix=args.gcs_prefix)
-        print(f"uploaded {upload_root} to {args.gcs_prefix.rstrip('/')}")
+        upload_platform_handoffs(local_root=upload_root, gcs_prefix=gcs_prefix)
+        print(f"uploaded {upload_root} to {gcs_prefix.rstrip('/')}")
 
     return 0
 
