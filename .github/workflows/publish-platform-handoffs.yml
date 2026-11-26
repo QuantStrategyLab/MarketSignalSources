@@ -38,7 +38,7 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'interactivebrokersquant' }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
-      GCS_PREFIX: ${{ inputs.gcs_prefix || vars.MARKET_SIGNAL_GCS_PREFIX || 'gs://qsl-runtime-logs-shared/platform_handoffs' }}
+      GCS_PREFIX: ${{ inputs.gcs_prefix || secrets.MARKET_SIGNAL_GCS_PREFIX || vars.MARKET_SIGNAL_GCS_PREFIX }}
       EXECUTE_PUBLISH: ${{ github.event_name == 'schedule' && 'true' || inputs.execute_publish }}
 
     steps:
@@ -55,6 +55,12 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install -e .
+
+      - name: Validate publish GCS prefix
+        if: env.EXECUTE_PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          [ -n "${GCS_PREFIX:-}" ] || { echo "MARKET_SIGNAL_GCS_PREFIX or gcs_prefix input is required when execute_publish=true" >&2; exit 2; }
 
       - name: Authenticate to Google Cloud
         if: env.EXECUTE_PUBLISH == 'true'
