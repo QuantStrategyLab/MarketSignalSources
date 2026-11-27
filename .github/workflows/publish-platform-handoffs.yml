@@ -35,10 +35,10 @@ jobs:
       contents: read
       id-token: write
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'interactivebrokersquant' }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
-      GCS_PREFIX: ${{ inputs.gcs_prefix || secrets.MARKET_SIGNAL_GCS_PREFIX || vars.MARKET_SIGNAL_GCS_PREFIX }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT: ${{ secrets.GCP_WORKLOAD_IDENTITY_SERVICE_ACCOUNT }}
+      GCS_PREFIX: ${{ inputs.gcs_prefix || secrets.MARKET_SIGNAL_GCS_PREFIX }}
       EXECUTE_PUBLISH: ${{ github.event_name == 'schedule' && 'true' || inputs.execute_publish }}
 
     steps:
@@ -118,7 +118,7 @@ jobs:
             echo
             echo "- consumer: \`us_equity:ibit_smart_dca\`"
             echo "- as_of: \`${{ steps.publish.outputs.as_of }}\`"
-            echo "- gcs_prefix: \`${GCS_PREFIX}\`"
+            echo "- gcs_prefix_configured: \`$([ -n "${GCS_PREFIX:-}" ] && echo yes || echo no)\`"
             echo "- execute_publish: \`${EXECUTE_PUBLISH}\`"
             echo
             echo "Generated files:"
