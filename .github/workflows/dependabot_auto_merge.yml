@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh pr view "${{ steps.pr.outputs.pr_number }}" --repo "${GITHUB_REPOSITORY}" --json number,isDraft,author,url,body,labels > pr.json
+          gh pr view "${{ steps.pr.outputs.pr_number }}" --repo "${GITHUB_REPOSITORY}" --json number,isDraft,author,url,body,labels,mergeStateStatus,mergeable > pr.json
           python3 - <<'PY'
           import json
           import os
@@ -60,13 +60,17 @@ jobs:
           is_major = "update-type: version-update:semver-major" in body
           dependabot_authors = {"dependabot[bot]", "app/dependabot"}
           is_dependabot = author in dependabot_authors and "dependencies" in labels
-          should_merge = is_dependabot and not pr.get("isDraft") and not is_major
+          merge_state = str(pr.get("mergeStateStatus") or "")
+          is_mergeable_now = merge_state == "CLEAN"
+          should_merge = is_dependabot and not pr.get("isDraft") and not is_major and is_mergeable_now
           if should_merge:
               reason = "ready"
           elif is_major:
               reason = "major_update"
-          else:
+          elif not is_dependabot or pr.get("isDraft"):
               reason = "not_eligible_dependabot_pr"
+          else:
+              reason = f"not_mergeable_{(merge_state or 'unknown').lower()}"
 
           summary_lines = [
               "## Auto-Merge Gate",
@@ -75,6 +79,7 @@ jobs:
               f"- Draft: `{'yes' if pr.get('isDraft') else 'no'}`",
               f"- Dependabot label: `{'yes' if 'dependencies' in labels else 'no'}`",
               f"- Major update: `{'yes' if is_major else 'no'}`",
+              f"- Merge state: `{merge_state or 'UNKNOWN'}`",
               f"- Final merge decision: `{'merge' if should_merge else 'skip'}`",
               f"- Reason: `{reason}`",
           ]
